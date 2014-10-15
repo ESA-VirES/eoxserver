@@ -32,15 +32,7 @@ from django.contrib.gis.db import models
 from eoxserver.resources.coverages.models import (
     collect_eo_metadata, Collection, Coverage, EO_OBJECT_TYPE_REGISTRY
 )
-
-
-def get_total_seconds(d):
-    """ Helper to calculate the total seconds of a timedelta
-    """
-    try:
-        return d.total_seconds()
-    except:
-        return (d.microseconds + (d.seconds + d.days * 24 * 3600) * 1e6) / 1e6
+from vires.util import get_total_seconds
 
 
 class Product(Coverage):

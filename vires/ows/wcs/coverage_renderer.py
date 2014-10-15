@@ -26,9 +26,9 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-
+import logging
 from uuid import uuid4
-from cStringIO import StringIO
+#from cStringIO import StringIO
 import csv
 from itertools import izip
 
@@ -44,6 +44,10 @@ from eoxserver.services.result import ResultBuffer, ResultFile
 from eoxserver.services.subset import Trim
 
 from vires import models
+from vires.util import get_total_seconds
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProductRenderer(Component):
@@ -59,7 +63,7 @@ class ProductRenderer(Component):
         return issubclass(params.coverage.real_type, self.handles)
 
     def render(self, params):
-        coverage = params.coverage
+        coverage = params.coverage.cast()
         subsets = params.subsets
         frmt = params.format
 
@@ -86,10 +90,15 @@ class ProductRenderer(Component):
                     )
 
                 # TODO: implement
-                
+                resolution = get_total_seconds(coverage.resolution_time)
+                low = get_total_seconds(subset.low - begin_time) / resolution
+                high = get_total_seconds(subset.high - begin_time) / resolution
+
+                subset = Trim("x", low, high)
+                logger.debug("Calculated subset %s" % subset)
 
             else:
-                if subset.low < 0 or subset.high >= coverage.size_x:
+                if subset.low < 0 or subset.high > coverage.size_x:
                     raise InvalidSubsettingException(
                         "Subset size does not match coverage size."
                     )
