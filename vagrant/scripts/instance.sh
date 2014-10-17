@@ -193,8 +193,12 @@ sudo python setup.py develop
 #----------------------------------------------------------------------------
 # EOxServer Instance
 
-INSTROOT=/home/vagrant
+INSTROOT=/srv/vires
 INSTANCE=vires00
+
+mkdir -vp "$INSTROOT"
+chown -v "$VIRUSER:$VIRGROUP" "$INSTROOT"
+chmod -v 0755 "$INSTROOT"
 
 SETTINGS="${INSTROOT}/${INSTANCE}/${INSTANCE}/settings.py"
 INSTSTAT_URL="/${INSTANCE}_static" # DO NOT USE THE TRAILING SLASH!!!
@@ -202,6 +206,7 @@ INSTSTAT_DIR="${INSTROOT}/${INSTANCE}/${INSTANCE}/static"
 WSGI="${INSTROOT}/${INSTANCE}/${INSTANCE}/wsgi.py"
 MNGCMD="${INSTROOT}/${INSTANCE}/manage.py"
 EOXSLOG="${INSTROOT}/${INSTANCE}/${INSTANCE}/logs/eoxserver.log"
+EOXSCONF="${INSTROOT}/${INSTANCE}/${INSTANCE}/conf/eoxserver.conf"
 
 DBENGINE="django.contrib.gis.db.backends.postgis"
 DBNAME="eoxs_${INSTANCE}"
