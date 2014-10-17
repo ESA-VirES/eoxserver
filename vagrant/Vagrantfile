@@ -31,6 +31,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # argument is a set of non-required options.
   config.vm.synced_folder  "./shares/httpd_conf.d", "/etc/httpd/conf.d", owner: "root", group: "root"
   config.vm.synced_folder  "..", "/var/eoxserver"
+  config.vm.synced_folder  "./shares/data", "/var/vires/data"
 
   # Shell provisioning
   config.vm.provision "shell", path: "scripts/selinux.sh"
@@ -50,7 +51,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "virtualbox" do |v|
 
     # Custom name
-    v.name = "eoxserver"
+    v.name = "eoxserver_vires"
 
     # Increase memory and cpus
     v.customize ["modifyvm", :id, "--memory", 1024, "--cpus", 2]
