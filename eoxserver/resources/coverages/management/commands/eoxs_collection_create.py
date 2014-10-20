@@ -35,6 +35,7 @@ from eoxserver.resources.coverages import models
 from eoxserver.resources.coverages.management.commands import (
     CommandOutputMixIn, _variable_args_cb, nested_commit_on_success
 )
+from eoxserver.core.util.importtools import import_module
 
 
 class Command(CommandOutputMixIn, BaseCommand):
@@ -84,6 +85,10 @@ class Command(CommandOutputMixIn, BaseCommand):
         DatasetSeries.
         Optionally the collection can directly be inserted into other
         collections and can be directly supplied with sub-objects.
+
+        The type of the collection must be specified with a prepended module
+        path if the type is not one of the standard collection types.
+        E.g: 'myapp.models.MyCollection'.
     """
 
     @nested_commit_on_success
@@ -94,11 +99,10 @@ class Command(CommandOutputMixIn, BaseCommand):
 
         collection_type = kwargs["type"]
         try:
-            # TODO: allow collections residing in other apps as-well
             module = models
             if "." in collection_type:
                 mod_name, _, collection_type = collection_type.rpartition(".")
-                module = __import__(mod_name)
+                module = import_module(mod_name)
 
             CollectionType = getattr(module, collection_type)
 
@@ -120,7 +124,8 @@ class Command(CommandOutputMixIn, BaseCommand):
         self.print_msg("Creating Collection: '%s'" % identifier)
 
         try:
-            collection = CollectionType(identifier=identifier)
+            collection = CollectionType()
+            collection.identifier = identifier
             collection.full_clean()
             collection.save()
 
