@@ -25,9 +25,11 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-from django.contrib.gis import forms
+#from django.contrib.gis import forms
 from django.contrib.gis import admin
-from eoxserver.resources.coverages.admin import CoverageAdmin, CollectionAdmin
+from eoxserver.resources.coverages.admin import (
+    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline
+)
 
 from vires import models
 
@@ -50,13 +52,8 @@ class ProductAdmin(CoverageAdmin):
 admin.site.register(models.Product, ProductAdmin)
 
 
-#class ProductCollectionForm(forms.ModelForm):
-#    def clean_srid(self)
-
-
 class ProductCollectionAdmin(CollectionAdmin):
     model = models.ProductCollection
-    #form  = ProductCollectionForm
 
     fieldsets = (
         (None, {
@@ -66,23 +63,6 @@ class ProductCollectionAdmin(CollectionAdmin):
             'fields': (('begin_time', 'end_time'), 'footprint', "ground_path")
         }),
     )
-
-    def get_form(self, request, obj=None, **kwargs):
-        form = super(ProductCollectionAdmin, self).get_form(request, obj, **kwargs)
-        base_fields = form.base_fields
-        #form.base_fields['srid'].initial = 4326
-        #form.base_fields['srid'].widget = forms.HiddenInput()
-
-        return form
-
-    def save_model(self, request, obj, form, change):
-        print request, obj, form, change
-        if not change:
-            obj.extent = (-180, -90, 180, 90)
-            obj.srid = 4326
-            obj.ground_path = None
-        obj.save()
-
-    #inlines = (DataSourceInline, EOObjectInline, CollectionInline)
+    inlines = (EOObjectInline, CollectionInline)
 
 admin.site.register(models.ProductCollection, ProductCollectionAdmin)

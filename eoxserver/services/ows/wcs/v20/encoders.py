@@ -446,10 +446,11 @@ class GMLCOV10Encoder(GML32Encoder):
 
 class WCS20CoverageDescriptionXMLEncoder(GMLCOV10Encoder):
     def encode_coverage_description(self, coverage):
-        if issubclass(coverage.real_type, ReferenceableDataset):
-            rectified = False
-        else:
-            rectified = True
+        #if issubclass(coverage.real_type, ReferenceableDataset):
+        #    rectified = False
+        #else:
+        #    rectified = True
+        rectified = False
 
         return WCS("CoverageDescription",
             self.encode_bounded_by(coverage.extent_wgs84),
@@ -557,7 +558,8 @@ class WCS20EOXMLEncoder(WCS20CoverageDescriptionXMLEncoder, EOP20Encoder, OWS20E
             extent = coverage.extent
             sr = coverage.spatial_reference
 
-        rectified = False if issubclass(coverage.real_type, ReferenceableDataset) else True
+        #rectified = False if issubclass(coverage.real_type, ReferenceableDataset) else True
+        rectified = False
 
         return WCS("CoverageDescription",
             self.encode_bounded_by(extent, sr),

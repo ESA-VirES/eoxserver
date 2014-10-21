@@ -31,6 +31,12 @@ from uuid import uuid4
 #from cStringIO import StringIO
 import csv
 from itertools import izip
+try:
+    # available in Python 2.7+
+    from collections import OrderedDict
+except ImportError:
+    from django.utils.datastructures import SortedDict as OrderedDict
+
 
 from spacepy import pycdf
 from eoxserver.core import implements, ExtensionPoint, Component
@@ -64,9 +70,19 @@ class ProductRenderer(Component):
 
     def render(self, params):
         coverage = params.coverage.cast()
-        subsets = params.subsets
         frmt = params.format
 
+        # get subset
+        subset = self._apply_subsets(coverage, params.subsets)
+
+        output_data = self._read_data(coverage, subset, params.rangesubset)
+
+        result = self._encode_data(coverage, output_data, frmt)
+
+        # TODO: coverage description if "multipart"
+        return [result]
+
+    def _apply_subsets(self, coverage, subsets):
         if len(subsets) > 1:
             raise InvalidSubsettingException(
                 "Too many subsets supplied"
@@ -106,17 +122,21 @@ class ProductRenderer(Component):
         else:
             subset = Trim("x", 0, coverage.size_x)
 
+    def _read_data(self, coverage, subset, rangesubset):
+        range_type = coverage.range_type
+        
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
         ds = pycdf.CDF(filename)
-        output_data = {}
+        output_data = OrderedDict()
 
         # Read data
-        for name, data in ds.items():
-            if not params.rangesubset or name in params.rangesubset:
-                output_data[name] = data[int(subset.low):int(subset.high)]
+        for band in range_type:
+            if not rangesubset or band.identifier in rangesubset:
+                output_data[band.identifier] = data[int(subset.low):int(subset.high)]
 
+    def _encode_data(self, coverage, output_data, frmt):
         # Encode data
         if frmt == "text/csv":
             output_filename = "/tmp/%s.csv" % uuid4().hex
@@ -127,7 +147,10 @@ class ProductRenderer(Component):
                 for row in izip(*output_data.values()):
                     writer.writerow(map(translate, row))
 
-            result = ResultFile(output_filename)
+            return ResultFile(
+                output_filename, "text/csv", "%s.csv" % coverage.identifier,
+                coverage.identifier
+            )
 
         elif not frmt or frmt in ("application/cdf", "application/x-cdf"):
             #encoder = CDFEncoder(params.rangesubset)
@@ -140,17 +163,13 @@ class ProductRenderer(Component):
             output_ds.save()
             output_ds.close()
 
-            result = ResultFile(
+            return ResultFile(
                 output_filename, "application/cdf",
                 "%s.cdf" % coverage.identifier, coverage.identifier
             )
 
         else:
             raise RenderException("Invalid format '%s'" % frmt, "format")
-
-        # TODO: coverage description
-        return [result]
-
 
 def translate(arr):
 

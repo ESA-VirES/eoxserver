@@ -16,7 +16,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # doesn't already exist on the user's system.
   config.vm.box_url = "http://downloads.eox.at/boxes/centos-6.5-x86_64.box"
 
-  config.vm.hostname = "eoxserver-vagrant"
+  config.vm.hostname = "vires-eoxserver-vagrant"
 
   # Create a forwarded port mapping which allows access to a specific port
   # within the machine from a port on the host machine. In the example below,
@@ -51,7 +51,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "virtualbox" do |v|
 
     # Custom name
-    v.name = "eoxserver_vires"
+    v.name = "vires-eoxserver"
 
     # Increase memory and cpus
     v.customize ["modifyvm", :id, "--memory", 1024, "--cpus", 2]
