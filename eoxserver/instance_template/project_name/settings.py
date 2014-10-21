@@ -194,6 +194,7 @@ INSTALLED_APPS = (
     'eoxserver.webclient',
     # Enable EOxServer autotests
     #'autotest_services',
+    'vires',
 )
 
 
@@ -224,6 +225,7 @@ COMPONENTS = (
 
     # VirES Processes
     'eoxserver.vires.*',
+    'vires.ows.**'
 )
 
 
