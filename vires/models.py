@@ -28,6 +28,7 @@
 
 from django.core.exceptions import ValidationError
 from django.contrib.gis.db import models
+from django.contrib.gis import geos
 
 from eoxserver.resources.coverages.models import (
     collect_eo_metadata, Collection, Coverage, EO_OBJECT_TYPE_REGISTRY
@@ -67,25 +68,34 @@ class ProductCollection(Product, Collection):
         product = eo_object.cast()
 
         if len(self):
-            if self.resolution_time != product.resolution_time:
-                raise ValidationError(
-                    "%s has a different temporal resolution as %s" % (
-                        self, product
-                    )
-                )
+            # TODO: re-code this, as this is not relevant enough
+            #if self.resolution_time != product.resolution_time:
+            #    raise ValidationError(
+            #        "%s has a different temporal resolution as %s" % (
+            #            self, product
+            #        )
+            #    )
             temporal_resolution = get_total_seconds(self.resolution_time)
-            ground_path = self.ground_path.union(product.ground_path)
+            #ground_path = self.ground_path.union(product.ground_path)
         else:
             temporal_resolution = get_total_seconds(product.resolution_time)
-            ground_path = product.ground_path
+            #ground_path = product.ground_path
 
-        self.begin_time, self.end_time, self.footprint = collect_eo_metadata(
-            self.eo_objects.all(), insert=[eo_object], bbox=False
-        )
+        if self.begin_time and self.end_time and self.footprint:
+            self.begin_time = min(self.begin_time, product.begin_time)
+            self.end_time = max(self.end_time, product.end_time)
+            footprint = self.footprint.union(product.footprint)
+            self.footprint = geos.MultiPolygon(
+                geos.Polygon.from_bbox(footprint.extent)
+            )
+        else:
+            self.begin_time, self.end_time, self.footprint = collect_eo_metadata(
+                self.eo_objects.all(), insert=[eo_object], bbox=True
+            )
         self.size_x = int(round(
             get_total_seconds(self.duration) / temporal_resolution)
         )
-        self.ground_path = ground_path
+        #self.ground_path = ground_path
         self.save()
 
 EO_OBJECT_TYPE_REGISTRY[210] = ProductCollection
