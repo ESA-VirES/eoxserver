@@ -122,30 +122,26 @@ class retrieve_data(Component):
 
         collection_ids = collection_ids.split(",")
 
-        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
-        collection_db_ids = []
-        for collection in collections:
-            collection_db_ids.append(collection.id)
-
         f = StringIO()
         writer = csv.writer(f)
 
-        coverages_qs = models.Product.objects.filter(collections__id__in=collection_db_ids)
-        coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
-        coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
-
-
-        # TODO: assert that the range_type is equal for all collections
         range_type = collections[0].range_type
         writer.writerow(["id"] + [band.identifier for band in range_type])
+        # TODO: assert that the range_type is equal for all collections
 
-        for coverage in coverages_qs:
-            cov_begin_time, cov_end_time = coverage.time_extent
-            cov_cast = coverage.cast()
-            t_res = get_total_seconds(cov_cast.resolution_time)
-            low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
-            high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-            self.handle(cov_cast, collection.identifier, range_type, writer, low, high, resolution, bbox)
+        for collection_id in collection_ids:
+            coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
+            coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+            coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+
+            for coverage in coverages_qs:
+                #collection_id = models.ProductCollection.objects.filter(identifier__in=collection_id)
+                cov_begin_time, cov_end_time = coverage.time_extent
+                cov_cast = coverage.cast()
+                t_res = get_total_seconds(cov_cast.resolution_time)
+                low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, bbox)
 
 
         outputs['output'] = f
