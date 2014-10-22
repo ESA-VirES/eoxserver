@@ -166,7 +166,7 @@ class retrieve_data(Component):
         if bbox:
             lons = output_data["Longitude"]
             lats = output_data["Latitude"]
-            mask = (lons > bbox[0]) & (lons < bbox[2]) & (lats > bbox[1]) & (lats < bbox[3])
+            mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
 
             for name, data in output_data.items():
                 output_data[name] = output_data[name][mask]
