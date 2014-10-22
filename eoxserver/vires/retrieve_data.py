@@ -122,6 +122,8 @@ class retrieve_data(Component):
 
         collection_ids = collection_ids.split(",")
 
+        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
+        
         f = StringIO()
         writer = csv.writer(f)
 
