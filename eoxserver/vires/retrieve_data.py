@@ -1,0 +1,180 @@
+#-------------------------------------------------------------------------------
+#
+# Project: EOxServer <http://eoxserver.org>
+# Authors: Martin Paces <martin.paces@eox.at>
+#
+#-------------------------------------------------------------------------------
+# Copyright (C) 2014 EOX IT Services GmbH
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies of this Software or works derived from this Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#-------------------------------------------------------------------------------
+
+import json
+import csv
+import math
+from datetime import datetime
+from itertools import izip
+from lxml import etree
+from StringIO import StringIO
+try:
+    # available in Python 2.7+
+    from collections import OrderedDict
+except ImportError:
+    from django.utils.datastructures import SortedDict as OrderedDict
+import numpy
+
+from eoxserver.core import Component, implements
+from eoxserver.services.ows.wps.interfaces import ProcessInterface
+from eoxserver.services.ows.wps.exceptions import InvalidOutputDefError
+from eoxserver.services.result import ResultBuffer, ResultFile
+from eoxserver.services.ows.wps.parameters import (
+    ComplexData, CDObject, CDTextBuffer,
+    FormatText, FormatXML, FormatJSON, #FormatBinaryRaw, FormatBinaryBase64,
+    BoundingBoxData, BoundingBox,
+    LiteralData, String,
+    AllowedRange, UnitLinear,
+)
+
+from uuid import uuid4
+from spacepy import pycdf
+from eoxserver.backends.access import connect
+from vires import models
+from vires.util import get_total_seconds
+
+
+CRSS = (
+    4326,  # WGS84
+    32661, 32761,  # WGS84 UPS-N and UPS-S
+    32601, 32602, 32603, 32604, 32605, 32606, 32607, 32608, 32609, 32610,  # WGS84 UTM  1N-10N
+    32611, 32612, 32613, 32614, 32615, 32616, 32617, 32618, 32619, 32620,  # WGS84 UTM 11N-20N
+    32621, 32622, 32623, 32624, 32625, 32626, 32627, 32628, 32629, 32630,  # WGS84 UTM 21N-30N
+    32631, 32632, 32633, 32634, 32635, 32636, 32637, 32638, 32639, 32640,  # WGS84 UTM 31N-40N
+    32641, 32642, 32643, 32644, 32645, 32646, 32647, 32648, 32649, 32650,  # WGS84 UTM 41N-50N
+    32651, 32652, 32653, 32654, 32655, 32656, 32657, 32658, 32659, 32660,  # WGS84 UTM 51N-60N
+    32701, 32702, 32703, 32704, 32705, 32706, 32707, 32708, 32709, 32710,  # WGS84 UTM  1S-10S
+    32711, 32712, 32713, 32714, 32715, 32716, 32717, 32718, 32719, 32720,  # WGS84 UTM 11S-20S
+    32721, 32722, 32723, 32724, 32725, 32726, 32727, 32728, 32729, 32730,  # WGS84 UTM 21S-30S
+    32731, 32732, 32733, 32734, 32735, 32736, 32737, 32738, 32739, 32740,  # WGS84 UTM 31S-40S
+    32741, 32742, 32743, 32744, 32745, 32746, 32747, 32748, 32749, 32750,  # WGS84 UTM 41S-50S
+    32751, 32752, 32753, 32754, 32755, 32756, 32757, 32758, 32759, 32760,  # WGS84 UTM 51S-60S
+    0, # ImageCRS
+)
+
+class retrieve_data(Component):
+    """ Process to retrieve registered data (focused on Swarm data)
+    """
+    implements(ProcessInterface)
+
+    identifier = "retrieve_data"
+    title = "Retrieve registered Swarm data based on collection, time intervall, [bbox] and resolution"
+    metadata = {"test-metadata":"http://www.metadata.com/test-metadata"}
+    profiles = ["test_profile"]
+
+    inputs = [
+        ("collection_ids", LiteralData('collection_ids', str, optional=False,
+            abstract="String input for collection identifiers (semicolon separator)",
+        )),
+        ("begin_time", LiteralData('begin_time', datetime, optional=False,
+            abstract="Start of the time interval",
+        )),
+        ("end_time", LiteralData('end_time', datetime, optional=False,
+            abstract="End of the time interval",
+        )),
+        ("bbox", BoundingBoxData("bbox", crss=CRSS, optional=True,
+            default=None,
+        )),
+        ("resolution", LiteralData('resolution', int, optional=True,
+            default=20, abstract="Resolution attribute to define step size for returned elements",
+            #TODO: think about how we want to implement this, maybe the process should check
+            #      the result size and decide how to handle large amount of elements.
+        )),
+    ]
+
+
+    outputs = [
+        ("output",
+            ComplexData('output',
+                title="Requested subset of data",
+                abstract="Process returns subset of data defined by time, bbox and collections.",
+                formats=FormatText('text/plain')
+            )
+        ),
+    ]
+
+    def execute(self, collection_ids, begin_time, end_time, bbox, resolution, **kwarg):
+        outputs = {}
+
+        collection_ids = collection_ids.split(",")
+
+        f = StringIO()
+        writer = csv.writer(f)
+
+        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
+        # TODO: assert that the range_type is equal for all collections
+        range_type = collections[0].range_type
+        writer.writerow(["id"] + [band.identifier for band in range_type])
+
+        for collection in collections:
+            for coverage in collection:
+                cov_begin_time, cov_end_time = coverage.time_extent
+                if begin_time < cov_end_time and end_time > cov_begin_time:
+                    cov_cast = coverage.cast()
+                    t_res = get_total_seconds(cov_cast.resolution_time)
+                    low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                    high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+                    self.handle(cov_cast, collection.identifier, range_type, writer, low, high, resolution, bbox)
+
+
+        outputs['output'] = f
+        
+        return outputs
+
+
+    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, bbox=None):
+        # Open file
+        filename = connect(coverage.data_items.all()[0])
+
+        ds = pycdf.CDF(filename)
+        output_data = OrderedDict()
+
+        # Read data
+        for band in range_type:
+            data = ds[band.identifier]
+            output_data[band.identifier] = data[low:high:resolution]
+
+        if bbox:
+            lons = output_data["Longitude"]
+            lats = output_data["Latitude"]
+            mask = (lons > bbox[0]) & (lons < bbox[2]) & (lats > bbox[1]) & (lats < bbox[3])
+
+            for name, data in output_data.items():
+                output_data[name] = output_data[name][mask]
+       
+        for row in izip(*output_data.values()):
+            writer.writerow([collection_id] + map(translate, row))
+        
+def translate(arr):
+
+    try:
+        if arr.ndim == 1:
+            return "{%s}" % ";".join(map(str, arr))
+    except:
+        pass
+
+    return arr
