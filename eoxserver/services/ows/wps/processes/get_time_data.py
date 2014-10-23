@@ -81,13 +81,9 @@ class GetTimeDataProcess(Component):
         vires_collection = False
         # get the dataset series matching the requested ID
         try:
-            series = models.DatasetSeries.objects.get(identifier=collection)
-        except models.DatasetSeries.DoesNotExist:
-            try:
-                series = v_models.ProductCollection.objects.filter(identifier=collection)
-                vires_collection = True
-            except models.DatasetSeries.DoesNotExist:
-                raise InvalidInputValueError("collection", "Invalid collection name '%s'!"%collection)
+            series = models.Collection.objects.get(identifier=collection)
+        except models.Collection.DoesNotExist:
+            raise InvalidInputValueError("collection", "Invalid collection name '%s'!"%collection)
 
         # recursive dataset series lookup
         def _get_children_ids(ds):
@@ -97,12 +93,9 @@ class GetTimeDataProcess(Component):
                 id_list.extend(_get_children_ids(child))
             return id_list
 
-        if not vires_collection:
-            series_ids = _get_children_ids(series)
-        else:
-            series_ids = []
-            for collection in series:
-                series_ids.append(collection.id)
+        
+        series_ids = _get_children_ids(series)
+        
 
         # prepare coverage query set
         coverages_qs = models.Coverage.objects.filter(collections__id__in=series_ids)
