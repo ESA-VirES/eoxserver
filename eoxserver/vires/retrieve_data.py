@@ -28,7 +28,8 @@
 import json
 import csv
 import math
-from datetime import datetime
+import datetime as dt
+import time
 from itertools import izip
 from lxml import etree
 from StringIO import StringIO
@@ -37,7 +38,7 @@ try:
     from collections import OrderedDict
 except ImportError:
     from django.utils.datastructures import SortedDict as OrderedDict
-import numpy
+import numpy as np
 
 from eoxserver.core import Component, implements
 from eoxserver.services.ows.wps.interfaces import ProcessInterface
@@ -57,6 +58,26 @@ from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
 
+import eoxmagmod as mm
+
+def toYearFraction(dt_start, dt_end):
+    def sinceEpoch(date): # returns seconds since epoch
+        return time.mktime(date.timetuple())
+
+    date = (dt_end - dt_start)/2 + dt_start  
+    s = sinceEpoch
+
+    year = date.year
+    startOfThisYear = dt.datetime(year=year, month=1, day=1)
+    startOfNextYear = dt.datetime(year=year+1, month=1, day=1)
+
+    yearElapsed = s(date) - s(startOfThisYear)
+    yearDuration = s(startOfNextYear) - s(startOfThisYear)
+    fraction = yearElapsed/yearDuration
+
+    return date.year + fraction
+
+GMM = mm.GeomagWMM2010(mm.read_model_wmm2010(mm.DATA_WMM_2010))
 
 CRSS = (
     4326,  # WGS84
@@ -90,10 +111,10 @@ class retrieve_data(Component):
         ("collection_ids", LiteralData('collection_ids', str, optional=False,
             abstract="String input for collection identifiers (semicolon separator)",
         )),
-        ("begin_time", LiteralData('begin_time', datetime, optional=False,
+        ("begin_time", LiteralData('begin_time', dt.datetime, optional=False,
             abstract="Start of the time interval",
         )),
-        ("end_time", LiteralData('end_time', datetime, optional=False,
+        ("end_time", LiteralData('end_time', dt.datetime, optional=False,
             abstract="End of the time interval",
         )),
         ("bbox", BoundingBoxData("bbox", crss=CRSS, optional=True,
@@ -128,7 +149,7 @@ class retrieve_data(Component):
         writer = csv.writer(f)
 
         range_type = collections[0].range_type
-        writer.writerow(["id"] + [band.identifier for band in range_type])
+        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_wmm2010", "Fres_wmm2010"])
         # TODO: assert that the range_type is equal for all collections
 
         for collection_id in collection_ids:
@@ -143,7 +164,7 @@ class retrieve_data(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, bbox)
+                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, bbox)
 
 
         outputs['output'] = f
@@ -151,7 +172,7 @@ class retrieve_data(Component):
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, bbox=None):
+    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, bbox=None):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -171,7 +192,14 @@ class retrieve_data(Component):
             for name, data in output_data.items():
                 output_data[name] = output_data[name][mask]
        
-        for row in izip(*output_data.values()):
+        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
+
+        output_data["F_wmm2010"] = GMM.get_intensity(GMM.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL))
+        output_data["Fres_wmm2010"] = output_data["F"] - output_data["F_wmm2010"]
+
+
+
+        for row in izip(*output_data.itervalues()):
             writer.writerow([collection_id] + map(translate, row))
         
 def translate(arr):
