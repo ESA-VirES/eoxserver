@@ -32,6 +32,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.synced_folder  "./shares/httpd_conf.d", "/etc/httpd/conf.d", owner: "root", group: "root"
   config.vm.synced_folder  "..", "/var/eoxserver"
   config.vm.synced_folder  "./shares/data", "/var/vires/data"
+  config.vm.synced_folder  "./shares/MagneticModel", "/var/vires/MagneticModel"
 
   # Shell provisioning
   config.vm.provision "shell", path: "scripts/selinux.sh"
