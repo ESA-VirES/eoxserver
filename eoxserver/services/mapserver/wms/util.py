@@ -40,9 +40,41 @@ from eoxserver.resources.coverages.crss import CRSsConfigReader
 from eoxserver.services.mapserver.interfaces import (
     ConnectorInterface, LayerFactoryInterface, StyleApplicatorInterface
 )
-from eoxserver.services.result import result_set_from_raw_data, get_content_type
+from eoxserver.services.result import result_set_from_raw_data, get_content_type, ResultBuffer, ResultFile
 from eoxserver.services.exceptions import RenderException
 from eoxserver.services.ows.wms.exceptions import InvalidCRS, InvalidFormat
+
+
+
+
+import os
+import tempfile
+os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
+
+import matplotlib as mpl
+mpl.use('Agg')
+from matplotlib import pyplot
+from uuid import uuid4
+import datetime as dt
+import numpy as np
+import math
+
+from spacepy import pycdf
+from eoxserver.backends.access import connect
+from vires import models
+from vires.util import get_total_seconds
+
+
+try:
+    # available in Python 2.7+
+    from collections import OrderedDict
+except ImportError:
+    from django.utils.datastructures import SortedDict as OrderedDict
+
+def savefig_pix(fig,fname,width,height,dpi=100, transparent=True):
+    rdpi = 1.0/float(dpi)  
+    fig.set_size_inches(width*rdpi,height*rdpi)
+    fig.savefig(fname, dpi=dpi, transparent=transparent)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +88,125 @@ class MapServerWMSBaseComponent(Component):
     style_applicators = ExtensionPoint(StyleApplicatorInterface)
 
 
+    @property
+    def suffixes(self):
+        return ['_measurement',] + self._suffixes
+
     def render(self, layer_groups, request_values, **options):
+
+
+        measurement = False
+
+        for _, _, _, suffix in tuple(layer_groups.walk()):
+            if suffix == "_measurement":
+                return self.my_render(layer_groups, request_values, **options)
+        else:
+            return self._render(layer_groups, request_values, **options)
+        
+
+    def my_render(self, layer_groups, request_values, **options):
+
+        # the output image
+        basename = "%s_%s"%( "tmp",uuid4().hex )
+        filename_png = "/tmp/%s.png" %( basename )
+
+        value_dict = dict(request_values)
+        options_dict = dict(options)
+
+        resolution = 10
+
+        
+        begin_time = options_dict["time"].low
+        end_time = options_dict["time"].high
+        bbox = [float(x) for x in value_dict["BBOX"].split(",")]
+        
+        output_data = OrderedDict()
+        tmp_data = OrderedDict()
+
+
+        for collections, coverage, name, suffix in layer_groups.walk():
+            
+            if coverage:
+
+                cov_cast = coverage.cast()
+
+                # Open file
+                filename = connect(cov_cast.data_items.all()[0])
+
+                ds = pycdf.CDF(filename)
+                
+                cov_begin_time, cov_end_time = coverage.time_extent
+                
+                t_res = get_total_seconds(cov_cast.resolution_time)
+                low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+
+                # Read data
+                for band in ["Latitude", "Longitude", "F"]:
+                    data = ds[band]
+                    tmp_data[band] = data[low:high:resolution]
+
+                if bbox:
+                    lons = tmp_data["Longitude"]
+                    lats = tmp_data["Latitude"]
+                    mask = (lons > bbox[0]) & (lons < bbox[2]) & (lats > bbox[1]) & (lats < bbox[3])
+
+                    for name, data in tmp_data.items():
+                        tmp_data[name] = tmp_data[name][mask]
+
+                for band in ["Latitude", "Longitude", "F"]:
+                    if band in output_data:
+                        output_data[band] = np.concatenate([output_data[band], tmp_data[band]])
+                    else:
+                        output_data[band] = tmp_data[band]
+
+        
+        try:
+
+
+
+            x = output_data["Longitude"]
+            y = output_data["Latitude"]
+
+            fg = pyplot.figure() 
+            ax = pyplot.subplot(111)
+
+            #pl = pyplot.plot( x, y ) 
+            pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data["F"], s=35, vmin=30000, vmax=60000, edgecolors='none')
+            pyplot.xlim(bbox[0], bbox[2])
+            pyplot.ylim(bbox[1], bbox[3])
+            pyplot.axis("off")
+            fg.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
+
+            savefig_pix(fg, filename_png, int(value_dict["WIDTH"]), int(value_dict["HEIGHT"]), dpi=100)
+
+
+
+
+            # fig = pyplot.figure()
+            # pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data["F"], s=35, vmin=20000, vmax=100000)
+            #fig = pyplot.imshow(pix_res,vmin=-res_, vmax=res_, interpolation='nearest')
+            #fig.set_cmap('RdBu')
+            #fig.write_png(filename_png, True)
+            # fig.savefig(filename_png)
+
+            # with open(filename_png) as f:
+            #     output = f.read()
+
+        except Exception as e: 
+
+            if os.path.isfile(filename_png):
+                os.remove(filename_png)
+
+            raise
+           
+#        else:
+#            os.remove(filename_png)
+
+        return [ResultFile(filename_png, "image/png")], "image/png"
+        #return [ResultBuffer("Hello world! \n%s\n%s\n%s"%(tuple(layer_groups.walk()), request_values, options), "text/plain")], "text/plain"
+
+    def _render(self, layer_groups, request_values, **options):
         map_ = ms.Map()
         map_.setMetaData("ows_enable_request", "*")
         map_.setProjection("EPSG:4326")
@@ -109,7 +259,7 @@ class MapServerWMSBaseComponent(Component):
             raise RenderException("Missing 'format' parameter")        
 
     @property
-    def suffixes(self):
+    def _suffixes(self):
         return list(
             chain(*[factory.suffixes for factory in self.layer_factories])
         )
