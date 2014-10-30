@@ -45,8 +45,6 @@ from eoxserver.services.exceptions import RenderException
 from eoxserver.services.ows.wms.exceptions import InvalidCRS, InvalidFormat
 
 
-
-
 import os
 import tempfile
 os.environ['MPLCONFIGDIR'] = tempfile.mkdtemp()
@@ -99,50 +97,65 @@ class MapServerWMSBaseComponent(Component):
 
         for _, _, _, suffix in tuple(layer_groups.walk()):
             if suffix == "_measurement":
-                return self.my_render(layer_groups, request_values, **options)
+                return self.measurement_render(layer_groups, request_values, **options)
         else:
             return self._render(layer_groups, request_values, **options)
         
 
-    def my_render(self, layer_groups, request_values, **options):
+    def measurement_render(self, layer_groups, request_values, **options):
 
         # the output image
         basename = "%s_%s"%( "tmp",uuid4().hex )
         filename_png = "/tmp/%s.png" %( basename )
 
-        value_dict = dict(request_values)
-        options_dict = dict(options)
+        options_dict = dict((k.lower(), v) for k,v in options.iteritems())
+        value_dict = dict((k.lower(), v) for k,v in request_values)
 
         resolution = 10
 
         
+        
+        if "bands" in options_dict:
+            # TODO: Is this really the way to get to the string?
+            parameter = options_dict["bands"][0].encode('ascii','ignore')[1:-1]
+        else:
+            parameter = "F"
+
+        if "range_min" in value_dict:
+            range_min = float(value_dict["range_min"])
+        else:
+            range_min = 30000
+
+        if "range_max" in value_dict:
+            range_max = float(value_dict["range_max"])
+        else:
+            range_max = 60000
+
+        #import pdb; pdb.set_trace()
+
         begin_time = options_dict["time"].low
         end_time = options_dict["time"].high
-        bbox = [float(x) for x in value_dict["BBOX"].split(",")]
+        bbox = [float(x) for x in value_dict["bbox"].split(",")]
         
         output_data = OrderedDict()
         tmp_data = OrderedDict()
 
-
         for collections, coverage, name, suffix in layer_groups.walk():
             
             if coverage:
-
                 cov_cast = coverage.cast()
 
                 # Open file
                 filename = connect(cov_cast.data_items.all()[0])
-
                 ds = pycdf.CDF(filename)
                 
                 cov_begin_time, cov_end_time = coverage.time_extent
-                
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
 
                 # Read data
-                for band in ["Latitude", "Longitude", "F"]:
+                for band in ["Latitude", "Longitude", parameter]:
                     data = ds[band]
                     tmp_data[band] = data[low:high:resolution]
 
@@ -154,80 +167,41 @@ class MapServerWMSBaseComponent(Component):
                     for name, data in tmp_data.items():
                         tmp_data[name] = tmp_data[name][mask]
 
-                for band in ["Latitude", "Longitude", "F"]:
+                for band in ["Latitude", "Longitude", parameter]:
                     if band in output_data:
                         output_data[band] = np.concatenate([output_data[band], tmp_data[band]])
                     else:
                         output_data[band] = tmp_data[band]
-
         
         try:
-
-
-
             x = output_data["Longitude"]
             y = output_data["Latitude"]
 
             fg = pyplot.figure() 
             ax = pyplot.subplot(111)
 
-            #pl = pyplot.plot( x, y ) 
-            pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data["F"], s=35, vmin=30000, vmax=60000, edgecolors='none')
+            pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data[parameter],
+                            s=35, vmin=range_min, vmax=range_max, edgecolors='none')
             pyplot.xlim(bbox[0], bbox[2])
             pyplot.ylim(bbox[1], bbox[3])
             pyplot.axis("off")
             fg.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
 
-            savefig_pix(fg, filename_png, int(value_dict["WIDTH"]), int(value_dict["HEIGHT"]), dpi=100)
-
-
-
-
-            # fig = pyplot.figure()
-            # pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data["F"], s=35, vmin=20000, vmax=100000)
-            #fig = pyplot.imshow(pix_res,vmin=-res_, vmax=res_, interpolation='nearest')
-            #fig.set_cmap('RdBu')
-            #fig.write_png(filename_png, True)
-            # fig.savefig(filename_png)
-
-            # with open(filename_png) as f:
-            #     output = f.read()
+            savefig_pix(fg, filename_png, int(value_dict["width"]), int(value_dict["height"]), dpi=100)
 
         except Exception as e: 
-
             if os.path.isfile(filename_png):
                 os.remove(filename_png)
-
             raise
-           
-#        else:
-#            os.remove(filename_png)
 
         return [ResultFile(filename_png, "image/png")], "image/png"
-        #return [ResultBuffer("Hello world! \n%s\n%s\n%s"%(tuple(layer_groups.walk()), request_values, options), "text/plain")], "text/plain"
+
 
     def _render(self, layer_groups, request_values, **options):
         map_ = ms.Map()
         map_.setMetaData("ows_enable_request", "*")
         map_.setProjection("EPSG:4326")
         map_.imagecolor.setRGB(0, 0, 0)
-
-        symbol = ms.symbolObj("circle")
-        symbol.type = ms.MS_SYMBOL_ELLIPSE
-        line = ms.lineObj()
-        point = ms.pointObj(1,1)
-        line.add(point)
-        symbol.setPoints(line)
-        symbol.filled = ms.MS_TRUE
-        
-
-        #ss = ms.symbolSetObj()
-        
-        #ss.appendSymbol(symbol)
-
-        map_.symbolset.appendSymbol(symbol)
-
-        #import pdb; pdb.set_trace()
 
         # set supported CRSs
         decoder = CRSsConfigReader(get_eoxserver_config())
