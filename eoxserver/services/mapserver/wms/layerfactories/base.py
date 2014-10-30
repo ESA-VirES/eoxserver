@@ -136,6 +136,77 @@ class PolygonLayerMixIn(object):
 
         return layer
 
+class LineFeatureLayerMixIn(object):
+    def _create_line_layer(self, name):
+        layer = ms.layerObj()
+        layer.name = name
+        layer.type = ms.MS_LAYER_LINE
+
+        self.apply_styles(layer)
+
+        srid = 4326
+        layer.setProjection(crss.asProj4Str(srid))
+        layer.setMetaData("ows_srs", crss.asShortCode(srid)) 
+        layer.setMetaData("wms_srs", crss.asShortCode(srid)) 
+
+        layer.dump = True
+
+        layer.header = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_header.html")
+        layer.template = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_dataset.html")
+        layer.footer = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_footer.html")
+        
+        layer.setMetaData("gml_include_items", "all")
+        layer.setMetaData("wms_include_items", "all")
+
+        layer.addProcessing("ITEMS=identifier")
+
+        layer.offsite = ms.colorObj(0, 0, 0)
+
+
+        return layer
+
+    def _create_point_layer(self, name):
+        layer = ms.layerObj()
+        layer.name = name
+        layer.type = ms.MS_LAYER_POINT
+
+        #self.apply_styles(layer)
+
+        srid = 4326
+        layer.setProjection(crss.asProj4Str(srid))
+        layer.setMetaData("ows_srs", crss.asShortCode(srid)) 
+        layer.setMetaData("wms_srs", crss.asShortCode(srid)) 
+
+        layer.dump = True
+
+        layer.header = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_header.html")
+        layer.template = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_dataset.html")
+        layer.footer = os.path.join(settings.PROJECT_DIR, "conf", "outline_template_footer.html")
+        
+        layer.setMetaData("gml_include_items", "all")
+        layer.setMetaData("wms_include_items", "all")
+
+        layer.addProcessing("ITEMS=identifier")
+
+        layer.offsite = ms.colorObj(0, 0, 0)
+
+
+        cls = ms.classObj()
+        style = ms.styleObj()
+        style.color = ms.colorObj(255, 0, 0)
+
+        
+        style.size = 10
+        #style.symbolname = "circle"
+        style.symbol = 0
+        cls.insertStyle(style)
+        cls.group = name
+
+        #layer.insertClass(cls)
+
+        #layer.classgroup = name
+
+        return layer
 
 class PlainLayerMixIn(object): 
 

@@ -62,6 +62,23 @@ class MapServerWMSBaseComponent(Component):
         map_.setProjection("EPSG:4326")
         map_.imagecolor.setRGB(0, 0, 0)
 
+        symbol = ms.symbolObj("circle")
+        symbol.type = ms.MS_SYMBOL_ELLIPSE
+        line = ms.lineObj()
+        point = ms.pointObj(1,1)
+        line.add(point)
+        symbol.setPoints(line)
+        symbol.filled = ms.MS_TRUE
+        
+
+        #ss = ms.symbolSetObj()
+        
+        #ss.appendSymbol(symbol)
+
+        map_.symbolset.appendSymbol(symbol)
+
+        #import pdb; pdb.set_trace()
+
         # set supported CRSs
         decoder = CRSsConfigReader(get_eoxserver_config())
         crss_string = " ".join(
