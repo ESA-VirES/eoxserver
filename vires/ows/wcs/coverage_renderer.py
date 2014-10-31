@@ -122,6 +122,8 @@ class ProductRenderer(Component):
         else:
             subset = Trim("x", 0, coverage.size_x)
 
+        return subset
+
     def _read_data(self, coverage, subset, rangesubset):
         range_type = coverage.range_type
 
