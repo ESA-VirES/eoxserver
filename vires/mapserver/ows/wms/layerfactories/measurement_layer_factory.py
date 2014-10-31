@@ -31,6 +31,7 @@ import os.path
 
 from django.conf import settings
 
+from eoxserver.core.util.iteratortools import pairwise_iterative
 from eoxserver.contrib import mapserver as ms
 from eoxserver.resources.coverages import models, crss
 from eoxserver.services.mapserver.wms.layerfactories.base import (
@@ -106,23 +107,36 @@ class MeasurementLayerFactory(AbstractLayerFactory):
         return layer
 
     def _apply_style(self, layer, minvalue, maxvalue):
+        # trying to apply a rainbow scale effect. Does not seem to work, since
+        # only the last appended style is used.
         cls = ms.classObj()
-        style = ms.styleObj()
-        style.mincolor = ms.colorObj(0, 0, 255)
-        style.maxcolor = ms.colorObj(255, 0, 0)
+        colors = (
+            ms.colorObj(127, 0, 127),  # lila
+            ms.colorObj(0, 0, 255),    # blue
+            ms.colorObj(0, 255, 255),  # light blue
+            ms.colorObj(255, 255, 0),  # yellow
+            ms.colorObj(255, 127, 0),  # orange
+            ms.colorObj(255, 0, 0),    # red
+        )
 
-        style.minvalue = minvalue
-        style.maxvalue = maxvalue
+        step = (maxvalue - minvalue) / (len(colors) - 1)
 
-        style.minsize = 5
-        style.maxsize = 10
+        for i, (startcolor, endcolor) in enumerate(pairwise_iterative(colors)):
+            style = ms.styleObj()
+            style.mincolor = startcolor
+            style.maxcolor = endcolor
 
-        style.rangeitem = "value"
-        style.setBinding(ms.MS_STYLE_BINDING_SIZE, 'value')
-        style.symbol = 1
+            style.minvalue = minvalue + i * step
+            style.maxvalue = minvalue + (i + 1) * step
 
-        cls.group = "redblue"
-        cls.insertStyle(style)
+            style.minsize = 5
+            style.maxsize = 10
 
+            style.rangeitem = "value"
+            style.setBinding(ms.MS_STYLE_BINDING_SIZE, "value")
+            style.symbol = 1
+            cls.insertStyle(style)
+
+        cls.group = "rainbow"
         layer.insertClass(cls)
-        layer.classgroup = "redblue"
+        layer.classgroup = "rainbow"
