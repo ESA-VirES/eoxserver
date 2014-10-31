@@ -139,6 +139,8 @@ class ProductRenderer(Component):
                 data = ds[band.identifier][int(subset.low):int(subset.high)]
                 output_data[band.identifier] = data
 
+        return output_data
+
     def _encode_data(self, coverage, output_data, frmt):
         # Encode data
         if frmt == "text/csv":
