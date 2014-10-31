@@ -102,7 +102,7 @@ class MapServerWMSBaseComponent(Component):
             return self._render(layer_groups, request_values, **options)
         
 
-    def measurement_render(self, layer_groups, request_values, **options):
+    def measurement_render(self, layer_groups, request_values, bands=None, **options):
 
         # the output image
         basename = "%s_%s"%( "tmp",uuid4().hex )
@@ -115,9 +115,9 @@ class MapServerWMSBaseComponent(Component):
 
         
         
-        if "bands" in options_dict:
+        if bands:
             # TODO: Is this really the way to get to the string?
-            parameter = options_dict["bands"][0].encode('ascii','ignore')[1:-1]
+            parameter = bands[0]
         else:
             parameter = "F"
 
@@ -184,7 +184,7 @@ class MapServerWMSBaseComponent(Component):
 
                 pyplot.xlim(bbox[0], bbox[2])
                 pyplot.ylim(bbox[1], bbox[3])
-                
+
             pyplot.axis("off")
             fg.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
             savefig_pix(fg, filename_png, int(value_dict["width"]), int(value_dict["height"]), dpi=100)
