@@ -174,19 +174,19 @@ class MapServerWMSBaseComponent(Component):
                         output_data[band] = tmp_data[band]
         
         try:
-            x = output_data["Longitude"]
-            y = output_data["Latitude"]
 
             fg = pyplot.figure() 
-            ax = pyplot.subplot(111)
 
-            pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data[parameter],
-                            s=35, vmin=range_min, vmax=range_max, edgecolors='none')
-            pyplot.xlim(bbox[0], bbox[2])
-            pyplot.ylim(bbox[1], bbox[3])
+            if len(output_data.get("Latitude", ())):
+                ax = pyplot.subplot(111)
+                pyplot.scatter(output_data["Longitude"], output_data["Latitude"], c=output_data[parameter],
+                                s=35, vmin=range_min, vmax=range_max, edgecolors='none')
+
+                pyplot.xlim(bbox[0], bbox[2])
+                pyplot.ylim(bbox[1], bbox[3])
+                
             pyplot.axis("off")
             fg.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
-
             savefig_pix(fg, filename_png, int(value_dict["width"]), int(value_dict["height"]), dpi=100)
 
         except Exception as e: 
