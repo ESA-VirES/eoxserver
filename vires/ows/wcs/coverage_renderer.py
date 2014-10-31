@@ -39,14 +39,14 @@ except ImportError:
 
 
 from spacepy import pycdf
-from eoxserver.core import implements, ExtensionPoint, Component
+from eoxserver.core import implements, Component
 from eoxserver.backends.access import connect
 from eoxserver.services.ows.version import Version
 from eoxserver.services.ows.wcs.interfaces import WCSCoverageRendererInterface
 from eoxserver.services.exceptions import (
     InvalidSubsettingException, RenderException
 )
-from eoxserver.services.result import ResultBuffer, ResultFile
+from eoxserver.services.result import ResultFile
 from eoxserver.services.subset import Trim
 
 from vires import models
@@ -124,7 +124,7 @@ class ProductRenderer(Component):
 
     def _read_data(self, coverage, subset, rangesubset):
         range_type = coverage.range_type
-        
+
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -134,7 +134,8 @@ class ProductRenderer(Component):
         # Read data
         for band in range_type:
             if not rangesubset or band.identifier in rangesubset:
-                output_data[band.identifier] = data[int(subset.low):int(subset.high)]
+                data = ds[band.identifier][int(subset.low):int(subset.high)]
+                output_data[band.identifier] = data
 
     def _encode_data(self, coverage, output_data, frmt):
         # Encode data
@@ -171,8 +172,8 @@ class ProductRenderer(Component):
         else:
             raise RenderException("Invalid format '%s'" % frmt, "format")
 
-def translate(arr):
 
+def translate(arr):
     try:
         if arr.ndim == 1:
             return "{%s}" % ";".join(map(str, arr))
