@@ -26,18 +26,22 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+from os.path import join
 from itertools import izip
+from uuid import uuid4
 
 from django.contrib.gis import geos
-from eoxserver.core import Component, implements
+from eoxserver.core import Component, implements, ExtensionPoint
+from eoxserver.contrib import vsi, gdal
 from eoxserver.backends.access import connect
 from eoxserver.contrib import mapserver as ms
 from eoxserver.services.mapserver.interfaces import ConnectorInterface
 
 from vires.util import get_total_seconds
+from vires.interfaces import ForwardModelProviderInterface
 
 
-class CDFConnector(Component):
+class ForwardModelConnector(Component):
     """ Connects a CDF file.
     """
 
@@ -55,7 +59,6 @@ class CDFConnector(Component):
         """
         """
 
-
         data_item = data_items[0]
         for model_provider in self.model_providers:
             if model_provider.identifier == data_item.format:
@@ -71,13 +74,40 @@ class CDFConnector(Component):
         subsets = options.get("subsets")
         bands = options.get("bands", ("F",))
 
+        # TODO: get size from parameters
+        size_x, size_y = 512, 512
+
+        bbox = subsets.xy_bbox
+        if subsets.srid != 4326:
+            bbox = geos.Polygon.from_bbox(bbox).transform(4326).extent
+
+        array = model_provider.evaluate(
+            data_item, bbox, size_x, size_y, elevation, time.value
+        )
         
-        array = model_provider.evaluate()
-        # TODO: write to disk
+        # TODO: calculate what is actually required 
         
+        path = join("/vsimem", uuid4().hex)
+        driver = gdal.GetDriverByName("GTiff")
+        ds = driver.Create(path, 512, 512, 1, gdal.GDT_Float32)
+
+        gt = (
+            bbox[0],
+            float(bbox[2] - bbox[0]) / size_x,
+            0,
+            bbox[3],
+            0,
+            -float(bbox[3] - bbox[1]) / size_y
+        )
+
+        ds.SetGeoTransform(gt)
+
+        band = ds.GetRasterBand(1)
+        band.WriteArray(array)
+        layer.data = path
 
     def disconnect(self, coverage, data_items, layer, options):
         """
         """
 
-        # TODO remove dataset
+        vsi.remove(layer.data)

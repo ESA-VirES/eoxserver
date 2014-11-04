@@ -188,7 +188,7 @@ class EOObject(base.Castable, EOMetadata):
         super(EOObject, self).__init__(*args, **kwargs)
         self._original_begin_time = self.begin_time
         self._original_end_time = self.end_time
-        self._original_footprint = self.footprint
+        #self._original_footprint = self.footprint
 
 
     def save(self, *args, **kwargs):
@@ -197,7 +197,8 @@ class EOObject(base.Castable, EOMetadata):
         # propagate changes of the EO Metadata up in the collection hierarchy
         if (self._original_begin_time != self.begin_time
             or self._original_end_time != self.end_time
-            or self._original_footprint != self.footprint):
+            #or self._original_footprint != self.footprint
+            ):
 
             for collection in self.collections.all():
                 collection.update_eo_metadata()
@@ -205,7 +206,7 @@ class EOObject(base.Castable, EOMetadata):
         # set the new values for subsequent calls to `save()`
         self._original_begin_time = self.begin_time
         self._original_end_time = self.end_time
-        self._original_footprint = self.footprint
+        #self._original_footprint = self.footprint
 
 
     def __unicode__(self):

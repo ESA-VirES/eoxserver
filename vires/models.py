@@ -102,6 +102,6 @@ EO_OBJECT_TYPE_REGISTRY[210] = ProductCollection
 
 
 class ForwardModel(Coverage):
-    pass
+    objects = models.GeoManager()
 
-EO_OBJECT_TYPE_REGISTRY[250] = Product
+EO_OBJECT_TYPE_REGISTRY[250] = ForwardModel

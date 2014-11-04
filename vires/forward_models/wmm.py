@@ -52,4 +52,4 @@ class WMMForwardModel(Component):
         arr[:, :, 1] = lats
         arr[:, :, 2] = elevation
 
-        return model.eval(arr, date)
+        return eoxmagmod.vnorm(model.eval(arr, date))
