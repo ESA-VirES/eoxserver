@@ -99,3 +99,9 @@ class ProductCollection(Product, Collection):
         self.save()
 
 EO_OBJECT_TYPE_REGISTRY[210] = ProductCollection
+
+
+class ForwardModel(Coverage):
+    pass
+
+EO_OBJECT_TYPE_REGISTRY[250] = Product
