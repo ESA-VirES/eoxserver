@@ -66,9 +66,9 @@ class BaseForwardModel(Component):
         elif field == "Z":
             return values[..., 2]
         elif field == "I":
-            eoxmagmod.vincdecnorm(values)[0]
+            return eoxmagmod.vincdecnorm(values)[0]
         elif field == "D":
-            eoxmagmod.vincdecnorm(values)[1]
+            return eoxmagmod.vincdecnorm(values)[1]
 
         else:
             raise Exception("Invalid field '%s'." % field)
