@@ -103,7 +103,7 @@ class ForwardModelConnector(Component):
         path = join("/vsimem", uuid4().hex)
         #path = "/tmp/fm_output.tif"
         driver = gdal.GetDriverByName("GTiff")
-        ds = driver.Create(path, 512, 512, 1, gdal.GDT_Byte)
+        ds = driver.Create(path, size_x, size_y, 1, gdal.GDT_Byte)
 
         gt = (
             bbox[0],
