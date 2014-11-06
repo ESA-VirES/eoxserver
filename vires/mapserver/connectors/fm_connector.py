@@ -74,26 +74,31 @@ class ForwardModelConnector(Component):
 
         # TODO: get bbox, get feature, get elevation, get time
         time = options.get("time")
-        elevation = options.get("elevation", 0)
+        elevation = options.get("elevation") or 0
         subsets = options.get("subsets")
         bands = options.get("bands", ("F",))
 
         # TODO: get size from parameters
-        size_x, size_y = 512, 512
+        size_x, size_y = options["width"], options["height"]
 
         bbox = subsets.xy_bbox
         if subsets.srid != 4326:
             bbox = geos.Polygon.from_bbox(bbox).transform(4326).extent
 
-
-        with log_duration("model evaluation", logger) as m:
+        with log_duration("model evaluation", logger):
             array = model_provider.evaluate(
                 data_item, bands[0], bbox, size_x, size_y, elevation, time.value
             )
 
-            mi, ma = 22000, 69000
+            range_min, range_max = 22000, 69000
+            data_range = options["dimensions"].get("range")
+            if data_range:
+                try:
+                    range_min, range_max = map(float, data_range[0].split(","))
+                except:
+                    raise Exception("Invalid data range provided.")
 
-            array = (array - mi) / (ma-mi) * 255
+            array = (array - range_min) / (range_max - range_min) * 255
 
         path = join("/vsimem", uuid4().hex)
         #path = "/tmp/fm_output.tif"
