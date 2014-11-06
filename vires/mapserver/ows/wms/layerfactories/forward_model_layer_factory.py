@@ -54,22 +54,24 @@ class ForwardModelLayerFactory(BaseCoverageLayerFactory):
             forward_model, forward_model.identifier, extent
         )
         #self.set_render_options(layer, offsite, options)
-        self._apply_styles(layer, 0, 255)
+        self._apply_styles(layer, 0, 256)
         yield layer, data_items
 
     def _apply_styles(self, layer, minvalue, maxvalue):
         def create_style(name, layer, colors, minvalue, maxvalue):
             cls = ms.classObj()
             cls.group = name
-            step = (maxvalue - minvalue) / (len(colors) - 1)
+            step = (maxvalue - minvalue) / float(len(colors) - 1)
 
             for i, (color_a, color_b) in enumerate(pairwise_iterative(colors)):
                 style = ms.styleObj()
                 style.mincolor = color_a
                 style.maxcolor = color_b
 
-                style.minvalue = minvalue + i * step + 1
+                style.minvalue = minvalue + i * step
                 style.maxvalue = minvalue + (i + 1) * step
+
+                style.rangeitem = ""
 
                 cls.insertStyle(style)
             layer.insertClass(cls)
