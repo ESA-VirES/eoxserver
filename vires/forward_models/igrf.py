@@ -26,15 +26,27 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-import eoxmagmod
+import eoxmagmod.igrf
 
 from vires.forward_models.base import BaseForwardModel
 
 
-class WMMForwardModel(BaseForwardModel):
-    """ Forward model calculator for the WMM.
+class IGRFForwardModel(BaseForwardModel):
+    """ Forward model calculator for the IGRF.
     """
-    identifier = "WMM"
+
+    identifier = "IGRF"
 
     def get_model(self, data_item):
-        return eoxmagmod.read_model_wmm2010()
+        return eoxmagmod.igrf.read_model_igrf11()
+
+        """
+        
+
+
+        vnorm(arr) # F
+        vnorm(arrs[...,0:2]) # H
+        arr[...,0] # X
+        arr[...,1] # X
+        -arr[...,2] # Z
+        """

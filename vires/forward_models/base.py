@@ -26,15 +26,49 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+from eoxserver.core import Component, implements
 import eoxmagmod
+import numpy
 
-from vires.forward_models.base import BaseForwardModel
+from vires.interfaces import ForwardModelProviderInterface
 
 
-class WMMForwardModel(BaseForwardModel):
-    """ Forward model calculator for the WMM.
-    """
-    identifier = "WMM"
+class BaseForwardModel(Component):
 
-    def get_model(self, data_item):
-        return eoxmagmod.read_model_wmm2010()
+    implements(ForwardModelProviderInterface)
+
+    abstract = True
+
+    def evaluate(self, data_item, field, bbox, size_x, size_y, elevation, date):
+        model = self.get_model(data_item)
+        lons = numpy.linspace(bbox[0], bbox[2], size_x, endpoint=True)
+        lats = numpy.linspace(bbox[3], bbox[1], size_y, endpoint=True)
+
+        lons, lats = numpy.meshgrid(lons, lats)
+
+        arr = numpy.empty((size_y, size_x, 3))
+        arr[:, :, 0] = lats
+        arr[:, :, 1] = lons
+        arr[:, :, 2] = elevation
+
+        print field
+
+        values = model.eval(arr, date)
+        if field == "F":
+            return eoxmagmod.vnorm(values)
+        elif field == "H":
+            return eoxmagmod.vnorm(values[..., 0:2])
+
+        elif field == "X":
+            return values[..., 0]
+        elif field == "Y":
+            return values[..., 1]
+        elif field == "Z":
+            return values[..., 2]
+        elif field == "I":
+            eoxmagmod.vincdecnorm(values)[0]
+        elif field == "D":
+            eoxmagmod.vincdecnorm(values)[1]
+
+        else:
+            raise Exception("Invalid field '%s'." % field)

@@ -27,11 +27,13 @@
 #-------------------------------------------------------------------------------
 
 from os.path import join
-from itertools import izip
 from uuid import uuid4
+import logging
+import time
 
 from django.contrib.gis import geos
 from eoxserver.core import Component, implements, ExtensionPoint
+from eoxserver.core.util.perftools import log_duration
 from eoxserver.contrib import vsi, gdal
 from eoxserver.backends.access import connect
 from eoxserver.contrib import mapserver as ms
@@ -40,6 +42,8 @@ from eoxserver.services.mapserver.interfaces import ConnectorInterface
 from vires.util import get_total_seconds
 from vires.interfaces import ForwardModelProviderInterface
 
+
+logger = logging.getLogger(__name__)
 
 class ForwardModelConnector(Component):
     """ Connects a CDF file.
@@ -81,15 +85,20 @@ class ForwardModelConnector(Component):
         if subsets.srid != 4326:
             bbox = geos.Polygon.from_bbox(bbox).transform(4326).extent
 
-        array = model_provider.evaluate(
-            data_item, bbox, size_x, size_y, elevation, time.value
-        )
-        
-        # TODO: calculate what is actually required 
-        
+
+        with log_duration("model evaluation", logger) as m:
+            array = model_provider.evaluate(
+                data_item, bands[0], bbox, size_x, size_y, elevation, time.value
+            )
+
+            mi, ma = 22000, 69000
+
+            array = (array - mi) / (ma-mi) * 255
+
         path = join("/vsimem", uuid4().hex)
+        #path = "/tmp/fm_output.tif"
         driver = gdal.GetDriverByName("GTiff")
-        ds = driver.Create(path, 512, 512, 1, gdal.GDT_Float32)
+        ds = driver.Create(path, 512, 512, 1, gdal.GDT_Byte)
 
         gt = (
             bbox[0],

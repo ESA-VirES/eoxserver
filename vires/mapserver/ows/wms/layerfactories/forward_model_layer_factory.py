@@ -54,40 +54,43 @@ class ForwardModelLayerFactory(BaseCoverageLayerFactory):
             forward_model, forward_model.identifier, extent
         )
         #self.set_render_options(layer, offsite, options)
-        self._apply_style(layer, 30000, 60000)
+        self._apply_styles(layer, 0, 255)
         yield layer, data_items
 
-    def _apply_style(self, layer, minvalue, maxvalue):
-        # trying to apply a rainbow scale effect. Does not seem to work, since
-        # only the last appended style is used.
-        cls = ms.classObj()
-        colors = (
+    def _apply_styles(self, layer, minvalue, maxvalue):
+        def create_style(name, layer, colors, minvalue, maxvalue):
+            cls = ms.classObj()
+            cls.group = name
+            step = (maxvalue - minvalue) / (len(colors) - 1)
+
+            for i, (color_a, color_b) in enumerate(pairwise_iterative(colors)):
+                style = ms.styleObj()
+                style.mincolor = color_a
+                style.maxcolor = color_b
+
+                style.minvalue = minvalue + i * step + 1
+                style.maxvalue = minvalue + (i + 1) * step
+
+                cls.insertStyle(style)
+            layer.insertClass(cls)
+
+        create_style("rainbow", layer, (
             ms.colorObj(127, 0, 127),  # lila
             ms.colorObj(0, 0, 255),    # blue
             ms.colorObj(0, 255, 255),  # light blue
             ms.colorObj(255, 255, 0),  # yellow
             ms.colorObj(255, 127, 0),  # orange
             ms.colorObj(255, 0, 0),    # red
-        )
+        ), minvalue, maxvalue)
 
-        step = (maxvalue - minvalue) / (len(colors) - 1)
-
-        for i, (startcolor, endcolor) in enumerate(pairwise_iterative(colors)):
-            style = ms.styleObj()
-            style.mincolor = startcolor
-            style.maxcolor = endcolor
-
-            style.minvalue = minvalue + i * step
-            style.maxvalue = minvalue + (i + 1) * step
-
-            #style.minsize = 5
-            #style.maxsize = 10
-
-            #style.rangeitem = "value"
-            #style.setBinding(ms.MS_STYLE_BINDING_SIZE, "value")
-            #style.symbol = 1
-            cls.insertStyle(style)
-
-        cls.group = "rainbow"
-        layer.insertClass(cls)
-        layer.classgroup = "rainbow"
+        create_style("jet", layer, (
+            ms.colorObj(0, 0, 144),
+            ms.colorObj(0, 15, 255),
+            ms.colorObj(0, 144, 255),
+            ms.colorObj(15, 255, 238),
+            ms.colorObj(144, 255, 112),
+            ms.colorObj(255, 238, 0),
+            ms.colorObj(255, 112, 0),
+            ms.colorObj(238, 0, 0),
+            ms.colorObj(127, 0, 0),
+        ), minvalue, maxvalue)
