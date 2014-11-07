@@ -37,6 +37,7 @@ from eoxserver.core.util.perftools import log_duration
 from eoxserver.contrib import vsi, gdal
 from eoxserver.backends.access import connect
 from eoxserver.contrib import mapserver as ms
+from eoxserver.resources.coverages import models
 from eoxserver.services.mapserver.interfaces import ConnectorInterface
 
 from vires.util import get_total_seconds
@@ -72,13 +73,18 @@ class ForwardModelConnector(Component):
                 "No model provider '%s' available." % data_item.format
             )
 
-        # TODO: get bbox, get feature, get elevation, get time
         time = options.get("time")
         elevation = options.get("elevation") or 0
         subsets = options.get("subsets")
-        bands = options.get("bands", ("F",))
+        bands = options.get("bands", ())
+        try:
+            bandname = bands[0]
+            band = coverage.range_type.bands.get(identifier=bandname)
+        except models.Band.DoesNotExist:
+            raise Exception("Invalid band '%s' specified." % bandname)
+        except IndexError:
+            band = coverage.range_type[0]
 
-        # TODO: get size from parameters
         size_x, size_y = options["width"], options["height"]
 
         bbox = subsets.xy_bbox
@@ -87,10 +93,11 @@ class ForwardModelConnector(Component):
 
         with log_duration("model evaluation", logger):
             array = model_provider.evaluate(
-                data_item, bands[0], bbox, size_x, size_y, elevation, time.value
+                data_item, band.identifier, bbox, size_x, size_y, elevation,
+                time.value
             )
 
-            range_min, range_max = 22000, 69000
+            range_min, range_max = band.allowed_values
             data_range = options["dimensions"].get("range")
             if data_range:
                 try:
