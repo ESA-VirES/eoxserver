@@ -87,7 +87,7 @@ class GetTimeDataProcess(Component):
         def _get_children_ids(ds):
             ds_rct = ds.real_content_type
             id_list = [ds.id]
-            for child in series.eo_objects.filter(real_content_type=ds_rct):
+            for child in collection.eo_objects.filter(real_content_type=ds_rct):
                 id_list.extend(_get_children_ids(child))
             return id_list
 
