@@ -26,14 +26,33 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+from datetime import datetime, timedelta
+
+from django.utils.timezone import make_aware, utc
 from eoxserver.core import Component, implements
 import eoxmagmod
 import numpy
 
 from vires.interfaces import ForwardModelProviderInterface
+from vires.util import get_total_seconds
+
+
+def decimal_to_datetime(raw_value):
+    """ Converts a decimal year representation to a Python datetime.
+    """
+    year = int(raw_value)
+    rem = raw_value - year
+
+    base = make_aware(datetime(year, 1, 1), utc)
+    return base + timedelta(
+        seconds=get_total_seconds(base.replace(year=base.year + 1) - base) * rem
+    )
 
 
 class BaseForwardModel(Component):
+    """ Abstract base class for forward model providers using the eoxmagmod
+        library.
+    """
 
     implements(ForwardModelProviderInterface)
 
@@ -50,8 +69,6 @@ class BaseForwardModel(Component):
         arr[:, :, 0] = lats
         arr[:, :, 1] = lons
         arr[:, :, 2] = elevation
-
-        print field
 
         values = model.eval(arr, date)
         if field == "F":
@@ -72,3 +89,13 @@ class BaseForwardModel(Component):
 
         else:
             raise Exception("Invalid field '%s'." % field)
+
+    @property
+    def time_validity(self):
+        return map(decimal_to_datetime, self.get_model(None).validity)
+
+    def get_model(self):
+        """ Interface method. Shall return any model from the eoxmagmod
+            library.
+        """
+        raise NotImplementedError
