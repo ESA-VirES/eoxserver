@@ -150,8 +150,8 @@ class retrieve_czml(Component):
         # file-like text output
         tmp = CDTextBuffer()
 
-        data = []
-        data.append({"id":"document", "version":"1.0"})
+        jdata = []
+        jdata.append({"id":"document", "version":"1.0"})
 
         # TODO: assert that the range_type is equal for all collections
 
@@ -167,16 +167,16 @@ class retrieve_czml(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, data)
+                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, jdata)
 
 
-        tmp.write(json.dumps(data))
+        tmp.write(json.dumps(jdata))
         outputs['output'] = tmp
 
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, data):
+    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, jdata):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -199,7 +199,7 @@ class retrieve_czml(Component):
         for lon, lat, r, f in zip (lons, lats, rads, fs):
             color = cs.to_rgba(f)
             id = str(uuid4())
-            data.append({
+            jdata.append({
                 "id": id,
                 "point": {
                   "pixelSize": 10, 
