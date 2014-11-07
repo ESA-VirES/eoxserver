@@ -29,22 +29,21 @@
 from os.path import join
 from uuid import uuid4
 import logging
-import time
 
 from django.contrib.gis import geos
 from eoxserver.core import Component, implements, ExtensionPoint
 from eoxserver.core.util.perftools import log_duration
 from eoxserver.contrib import vsi, gdal
 from eoxserver.backends.access import connect
-from eoxserver.contrib import mapserver as ms
 from eoxserver.resources.coverages import models
+from eoxserver.services.subset import Trim, Slice
 from eoxserver.services.mapserver.interfaces import ConnectorInterface
 
-from vires.util import get_total_seconds
 from vires.interfaces import ForwardModelProviderInterface
 
 
 logger = logging.getLogger(__name__)
+
 
 class ForwardModelConnector(Component):
     """ Connects a CDF file.
@@ -74,6 +73,13 @@ class ForwardModelConnector(Component):
             )
 
         time = options.get("time")
+        if isinstance(time, Trim):
+            time = (time.high - time.low) / 2 + time.low
+        elif isinstance(time, Slice):
+            time = time.value
+        else:
+            raise Exception("Missing 'time' parameter.")
+
         elevation = options.get("elevation") or 0
         subsets = options.get("subsets")
         bands = options.get("bands", ())
@@ -94,7 +100,7 @@ class ForwardModelConnector(Component):
         with log_duration("model evaluation", logger):
             array = model_provider.evaluate(
                 data_item, band.identifier, bbox, size_x, size_y, elevation,
-                time.value
+                time
             )
 
             range_min, range_max = band.allowed_values
