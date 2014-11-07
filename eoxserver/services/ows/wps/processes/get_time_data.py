@@ -79,8 +79,8 @@ class GetTimeDataProcess(Component):
 
         # get the dataset series matching the requested ID
         try:
-            series = models.DatasetSeries.objects.get(identifier=collection)
-        except models.DatasetSeries.DoesNotExist:
+            eo_object = models.EOObject.objects.get(identifier=collection)
+        except models.Collection.DoesNotExist:
             raise InvalidInputValueError("collection", "Invalid collection name '%s'!"%collection)
 
         # recursive dataset series lookup
@@ -91,15 +91,21 @@ class GetTimeDataProcess(Component):
                 id_list.extend(_get_children_ids(child))
             return id_list
 
-        series_ids = _get_children_ids(series)
+        if models.iscollection(eo_object):
+            collection = eo_object.cast()
+            series_ids = _get_children_ids(collection)
 
-        # prepare coverage query set
-        coverages_qs = models.Coverage.objects.filter(collections__id__in=series_ids)
-        if end_time is not None:
-            coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
-        if begin_time is not None:
-            coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
-        coverages_qs = coverages_qs.order_by('begin_time', 'end_time')
+            # prepare coverage query set
+            coverages_qs = models.Coverage.objects.filter(collections__id__in=series_ids)
+            if end_time is not None:
+                coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+            if begin_time is not None:
+                coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+            coverages_qs = coverages_qs.order_by('begin_time', 'end_time')
+            coverages_qs = coverages_qs.values_list("begin_time", "end_time", "identifier", "min_x", "min_y", "max_x", "max_y")
+
+        else:
+            coverage_qs = ((eo_object.begin_time, eo_object.end_time, eo_object.identifier, eo_object.min_x, eo_object.min_y, eo_object.max_x, eo_object.max_y),)
 
         # create the output
         output = CDAsciiTextBuffer()
@@ -107,11 +113,8 @@ class GetTimeDataProcess(Component):
         header = ["starttime", "endtime", "bbox", "identifier"]
         writer.writerow(header)
 
-        for coverage in coverages_qs:
-            starttime = coverage.begin_time
-            endtime = coverage.end_time
-            identifier = coverage.identifier
-            bbox = coverage.extent_wgs84
+        for starttime, endtime, identifier, min_x, min_y, max_x, max_y in coverages_qs:
+            bbox = (min_x, min_y, max_x, max_y)
             writer.writerow([isoformat(starttime), isoformat(endtime), bbox, identifier])
 
         return output
