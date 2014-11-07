@@ -150,7 +150,8 @@ class retrieve_czml(Component):
         # file-like text output
         tmp = CDTextBuffer()
 
-        tmp.write(json.dumps({"id":"document", "version":"1.0"}))
+        data = []
+        data.append({"id":"document", "version":"1.0"})
 
         # TODO: assert that the range_type is equal for all collections
 
@@ -166,16 +167,16 @@ class retrieve_czml(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp)
+                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, data)
 
 
+        tmp.write(json.dumps(data))
         outputs['output'] = tmp
 
-        
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp):
+    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, data):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -198,7 +199,7 @@ class retrieve_czml(Component):
         for lon, lat, r, f in zip (lons, lats, rads, fs):
             color = cs.to_rgba(f)
             id = str(uuid4())
-            tmp.write(json.dumps({
+            data.append({
                 "id": id,
                 "point": {
                   "pixelSize": 10, 
@@ -210,7 +211,7 @@ class retrieve_czml(Component):
                 "position": {
                   "cartographicDegrees": [lon,lat,r-6384000]
                 }
-            }))
+            })
 
 
         
