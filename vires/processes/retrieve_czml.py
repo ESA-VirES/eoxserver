@@ -194,12 +194,14 @@ class retrieve_czml(Component):
         lats = output_data["Latitude"]
         rads = output_data["Radius"]
         fs = output_data["F"]
-
-        for lon, lat, r, f in izip (lons, lats, rads, fs):
+        identifier = coverage.identifier
+        
+        for i, (lon, lat, r, f) in enumerate(izip(lons, lats, rads, fs)):
             clr = cs.to_rgba(f)
-            id = str(uuid4())
-            tmp.write(',{"id":"%s","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
-                %(id,int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
+            #id = str(uuid4())
+
+            tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
+                %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
             tmp.write('"position":{"cartographicDegrees":[%f,%f,%d]}}'%(lon, lat, int(r-6384000)))
 
 
