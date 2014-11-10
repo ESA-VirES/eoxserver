@@ -150,8 +150,7 @@ class retrieve_czml(Component):
         # file-like text output
         tmp = CDTextBuffer()
 
-        jdata = []
-        jdata.append({"id":"document", "version":"1.0"})
+        tmp.write('[{"id":"document", "version":"1.0"},')
 
         # TODO: assert that the range_type is equal for all collections
 
@@ -167,16 +166,16 @@ class retrieve_czml(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, jdata)
+                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp)
 
 
-        tmp.write(json.dumps(jdata))
+        tmp.write(']')
         outputs['output'] = tmp
 
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, jdata):
+    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -196,22 +195,12 @@ class retrieve_czml(Component):
         rads = output_data["Radius"]
         fs = output_data["F"]
 
-        for lon, lat, r, f in zip (lons, lats, rads, fs):
-            color = cs.to_rgba(f)
+        for lon, lat, r, f in izip (lons, lats, rads, fs):
+            clr = cs.to_rgba(f)
             id = str(uuid4())
-            jdata.append({
-                "id": id,
-                "point": {
-                  "pixelSize": 10, 
-                  "show": True,
-                  "color": {
-                    "rgba": [int(v*256) for v in color]
-                  }
-                },
-                "position": {
-                  "cartographicDegrees": [lon,lat,r-6384000]
-                }
-            })
+            tmp.write('{"id":"%s","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d]}},'
+                %(id,int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
+            tmp.write('"position":{"cartographicDegrees":[%f,%f,%d]}}'%(lon, lat, int(r-6384000)))
 
 
         
