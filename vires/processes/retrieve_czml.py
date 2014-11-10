@@ -150,7 +150,7 @@ class retrieve_czml(Component):
         # file-like text output
         tmp = CDTextBuffer()
 
-        tmp.write('[{"id":"document", "version":"1.0"},')
+        tmp.write('[{"id":"document", "version":"1.0"}')
 
         # TODO: assert that the range_type is equal for all collections
 
@@ -198,7 +198,7 @@ class retrieve_czml(Component):
         for lon, lat, r, f in izip (lons, lats, rads, fs):
             clr = cs.to_rgba(f)
             id = str(uuid4())
-            tmp.write('{"id":"%s","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d]}},'
+            tmp.write(',{"id":"%s","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d]}},'
                 %(id,int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
             tmp.write('"position":{"cartographicDegrees":[%f,%f,%d]}}'%(lon, lat, int(r-6384000)))
 
