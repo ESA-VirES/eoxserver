@@ -33,11 +33,12 @@ from eoxserver.core.util.timetools import isoformat
 
 from eoxserver.services.ows.wps.interfaces import ProcessInterface
 from eoxserver.services.ows.wps.parameters import (
-    LiteralData, ComplexData, CDTextBuffer, CDAsciiTextBuffer, FormatText
+    LiteralData, ComplexData, CDAsciiTextBuffer, FormatText
 )
 from eoxserver.services.ows.wps.exceptions import InvalidInputValueError
 
 from eoxserver.resources.coverages import models
+
 
 class GetTimeDataProcess(Component):
     """ GetTimeDataProcess defines a WPS process needed by the EOxClient
@@ -47,9 +48,10 @@ class GetTimeDataProcess(Component):
 
     identifier = "getTimeData"
     title = "Get times of collection coverages."
-    decription = "Query collection and get list of coverages and their times" \
-            " and spatial extents. The process is used by the time-slider " \
-            " of the EOxClient (web client)."
+    decription = ("Query collection and get list of coverages and their times "
+                  "and spatial extents. The process is used by the time-slider "
+                  "of the EOxClient (web client).")
+
     metadata = {}
     profiles = ['EOxServer:GetTimeData']
 
@@ -65,10 +67,10 @@ class GetTimeDataProcess(Component):
     outputs = {
         "times": ComplexData("times",
                     formats=(FormatText('text/csv'), FormatText('text/plain')),
-                    title="Comma separated list of collection's coverages,"\
-                            " their extents and times.",
-                    abstract="NOTE: The use of the 'text/plain' format is "\
-                               "deprecated! This format will be removed!'"
+                    title="Comma separated list of collection's coverages, "
+                          "their extents and times.",
+                    abstract="NOTE: The use of the 'text/plain' format is "
+                             "deprecated! This format will be removed!'"
                 )
     }
 
@@ -79,24 +81,29 @@ class GetTimeDataProcess(Component):
 
         # get the dataset series matching the requested ID
         try:
-            eo_object = models.EOObject.objects.get(identifier=collection)
-        except models.Collection.DoesNotExist:
-            raise InvalidInputValueError("collection", "Invalid collection name '%s'!"%collection)
+            model = models.EOObject.objects.get(identifier=collection)
+        except models.EOObject.DoesNotExist:
+            raise InvalidInputValueError(
+                "collection", "Invalid collection name '%s'!" % collection
+            )
 
-        # recursive dataset series lookup
-        def _get_children_ids(ds):
-            ds_rct = ds.real_content_type
-            id_list = [ds.id]
-            for child in collection.eo_objects.filter(real_content_type=ds_rct):
-                id_list.extend(_get_children_ids(child))
-            return id_list
+        if models.iscollection(model):
+            model = model.cast()
 
-        if models.iscollection(eo_object):
-            collection = eo_object.cast()
-            series_ids = _get_children_ids(collection)
+            # recursive dataset series lookup
+            def _get_children_ids(ds):
+                ds_rct = ds.real_content_type
+                id_list = [ds.id]
+                for child in model.eo_objects.filter(real_content_type=ds_rct):
+                    id_list.extend(_get_children_ids(child))
+                return id_list
+
+            collection_ids = _get_children_ids(model)
 
             # prepare coverage query set
-            coverages_qs = models.Coverage.objects.filter(collections__id__in=series_ids)
+            coverages_qs = models.Coverage.objects.filter(
+                collections__id__in=collection_ids
+            )
             if end_time is not None:
                 coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
             if begin_time is not None:
@@ -105,7 +112,7 @@ class GetTimeDataProcess(Component):
             coverages_qs = coverages_qs.values_list("begin_time", "end_time", "identifier", "min_x", "min_y", "max_x", "max_y")
 
         else:
-            coverage_qs = ((eo_object.begin_time, eo_object.end_time, eo_object.identifier, eo_object.min_x, eo_object.min_y, eo_object.max_x, eo_object.max_y),)
+            coverages_qs = ((model.begin_time, model.end_time, model.identifier, model.min_x, model.min_y, model.max_x, model.max_y),)
 
         # create the output
         output = CDAsciiTextBuffer()
