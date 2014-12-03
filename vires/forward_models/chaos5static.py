@@ -1,4 +1,5 @@
 #-------------------------------------------------------------------------------
+# $Id$
 #
 # Project: EOxServer <http://eoxserver.org>
 # Authors: Fabian Schindler <fabian.schindler@eox.at>
@@ -25,51 +26,16 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-#from django.contrib.gis import forms
-from django.contrib.gis import admin
-from eoxserver.resources.coverages.admin import (
-    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline,
-    DataItemInline
-)
+import eoxmagmod.shc
 
-from vires import models
+from vires.forward_models.base import BaseForwardModel
 
 
-class ProductAdmin(CoverageAdmin):
-    fieldsets = (
-        (None, {
-            'fields': ('identifier', )
-        }),
-        ('Metadata', {
-            'fields': ('range_type',
-                       ('size_x', 'size_y'),
-                       ('begin_time', 'end_time'),
-                       'footprint',
-                       'ground_path'),
-            'description': 'Geospatial metadata'
-        }),
-    )
+class CHAOS5StaticForwardModel(BaseForwardModel):
+    """ Forward model calculator for the CHAOS-5 static field.
+    """
 
-admin.site.register(models.Product, ProductAdmin)
+    identifier = "CHAOS-5-Static"
 
-
-class ProductCollectionAdmin(CollectionAdmin):
-    model = models.ProductCollection
-
-    fieldsets = (
-        (None, {
-            'fields': ('identifier',)
-        }),
-        ('Metadata', {
-            'fields': (('begin_time', 'end_time'), 'footprint', "ground_path")
-        }),
-    )
-    inlines = (EOObjectInline, CollectionInline)
-
-admin.site.register(models.ProductCollection, ProductCollectionAdmin)
-
-
-class ForwardModelAdmin(CoverageAdmin):
-    inlines = (DataItemInline,)
-
-admin.site.register(models.ForwardModel, ForwardModelAdmin)
+    def get_model(self, data_item):
+        return eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_STATIC)

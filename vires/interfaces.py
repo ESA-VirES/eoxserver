@@ -1,4 +1,5 @@
 #-------------------------------------------------------------------------------
+# $Id$
 #
 # Project: EOxServer <http://eoxserver.org>
 # Authors: Fabian Schindler <fabian.schindler@eox.at>
@@ -25,51 +26,17 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-#from django.contrib.gis import forms
-from django.contrib.gis import admin
-from eoxserver.resources.coverages.admin import (
-    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline,
-    DataItemInline
-)
 
-from vires import models
+class ForwardModelProviderInterface(object):
+    """ Interface for forward model calculators.
+    """
 
+    @property
+    def identifier(self):
+        """ Returns the identifier for the used model.
+        """
 
-class ProductAdmin(CoverageAdmin):
-    fieldsets = (
-        (None, {
-            'fields': ('identifier', )
-        }),
-        ('Metadata', {
-            'fields': ('range_type',
-                       ('size_x', 'size_y'),
-                       ('begin_time', 'end_time'),
-                       'footprint',
-                       'ground_path'),
-            'description': 'Geospatial metadata'
-        }),
-    )
-
-admin.site.register(models.Product, ProductAdmin)
-
-
-class ProductCollectionAdmin(CollectionAdmin):
-    model = models.ProductCollection
-
-    fieldsets = (
-        (None, {
-            'fields': ('identifier',)
-        }),
-        ('Metadata', {
-            'fields': (('begin_time', 'end_time'), 'footprint', "ground_path")
-        }),
-    )
-    inlines = (EOObjectInline, CollectionInline)
-
-admin.site.register(models.ProductCollection, ProductCollectionAdmin)
-
-
-class ForwardModelAdmin(CoverageAdmin):
-    inlines = (DataItemInline,)
-
-admin.site.register(models.ForwardModel, ForwardModelAdmin)
+    def evaluate(self, coefficients, parameters):
+        """ Evaluate the forward model with the given parameters. This method
+            shall return a numpy array of the correct proportions
+        """

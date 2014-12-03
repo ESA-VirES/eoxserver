@@ -77,7 +77,7 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
-GMM = mm.GeomagWMM2010(mm.read_model_wmm2010(mm.DATA_WMM_2010))
+GMM = mm.read_model_wmm2010()
 
 CRSS = (
     4326,  # WGS84
@@ -194,7 +194,7 @@ class retrieve_data(Component):
        
         coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
 
-        output_data["F_wmm2010"] = GMM.get_intensity(GMM.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL))
+        output_data["F_wmm2010"] = mm.vnorm(GMM.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL))
         output_data["Fres_wmm2010"] = output_data["F"] - output_data["F_wmm2010"]
 
 

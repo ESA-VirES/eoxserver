@@ -1,4 +1,5 @@
 #-------------------------------------------------------------------------------
+# $Id$
 #
 # Project: EOxServer <http://eoxserver.org>
 # Authors: Fabian Schindler <fabian.schindler@eox.at>
@@ -25,51 +26,27 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
-#from django.contrib.gis import forms
-from django.contrib.gis import admin
-from eoxserver.resources.coverages.admin import (
-    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline,
-    DataItemInline
-)
+import eoxmagmod.igrf
 
-from vires import models
+from vires.forward_models.base import BaseForwardModel
 
 
-class ProductAdmin(CoverageAdmin):
-    fieldsets = (
-        (None, {
-            'fields': ('identifier', )
-        }),
-        ('Metadata', {
-            'fields': ('range_type',
-                       ('size_x', 'size_y'),
-                       ('begin_time', 'end_time'),
-                       'footprint',
-                       'ground_path'),
-            'description': 'Geospatial metadata'
-        }),
-    )
+class IGRFForwardModel(BaseForwardModel):
+    """ Forward model calculator for the IGRF.
+    """
 
-admin.site.register(models.Product, ProductAdmin)
+    identifier = "IGRF"
+
+    def get_model(self, data_item):
+        return eoxmagmod.igrf.read_model_igrf11()
+
+        """
+        
 
 
-class ProductCollectionAdmin(CollectionAdmin):
-    model = models.ProductCollection
-
-    fieldsets = (
-        (None, {
-            'fields': ('identifier',)
-        }),
-        ('Metadata', {
-            'fields': (('begin_time', 'end_time'), 'footprint', "ground_path")
-        }),
-    )
-    inlines = (EOObjectInline, CollectionInline)
-
-admin.site.register(models.ProductCollection, ProductCollectionAdmin)
-
-
-class ForwardModelAdmin(CoverageAdmin):
-    inlines = (DataItemInline,)
-
-admin.site.register(models.ForwardModel, ForwardModelAdmin)
+        vnorm(arr) # F
+        vnorm(arrs[...,0:2]) # H
+        arr[...,0] # X
+        arr[...,1] # X
+        -arr[...,2] # Z
+        """
