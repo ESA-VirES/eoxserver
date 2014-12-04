@@ -59,7 +59,7 @@ from vires import models
 from vires.util import get_total_seconds
 from vires import aux
 
-import eoxmagmod as mm
+import eoxmagmod
 
 def toYearFraction(dt_start, dt_end):
     def sinceEpoch(date): # returns seconds since epoch
@@ -78,7 +78,7 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
-GMM = mm.read_model_wmm2010()
+CH5M = eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_CORE)# + eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_STATIC) 
 
 CRSS = (
     4326,  # WGS84
@@ -150,7 +150,7 @@ class retrieve_data(Component):
         writer = csv.writer(f)
 
         range_type = collections[0].range_type
-        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_wmm2010", "Fres_wmm2010", "dst", "kp"])
+        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_CHAOS5", "F_res_chaos5", "B_NEC_res_chaos5", "dst", "kp"])
         # TODO: assert that the range_type is equal for all collections
 
         for collection_id in collection_ids:
@@ -195,8 +195,15 @@ class retrieve_data(Component):
        
         coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
 
-        output_data["F_wmm2010"] = mm.vnorm(GMM.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL))
-        output_data["Fres_wmm2010"] = output_data["F"] - output_data["F_wmm2010"]
+        chaos5_data = CH5M.eval(coords_sph, toYearFraction(begin_time, end_time), eoxmagmod.GEOCENTRIC_SPHERICAL)
+        chaos5_data[:,2] *= -1
+
+        output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
+        output_data["F_res_chaos5"] = output_data["F"] - output_data["F_CHAOS5"]
+
+        nec_data = output_data["B_NEC"]
+
+        output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
 
         aux_data = aux.query_db(
             output_data["Timestamp"][0], output_data["Timestamp"][-1],
