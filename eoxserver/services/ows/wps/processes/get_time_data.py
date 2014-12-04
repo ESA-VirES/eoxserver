@@ -112,7 +112,8 @@ class GetTimeDataProcess(Component):
             coverages_qs = coverages_qs.values_list("begin_time", "end_time", "identifier", "min_x", "min_y", "max_x", "max_y")
 
         else:
-            coverages_qs = ((model.begin_time, model.end_time, model.identifier, model.min_x, model.min_y, model.max_x, model.max_y),)
+            min_x, min_y, max_x, max_y = model.extent_wgs84
+            coverages_qs = ((model.begin_time, model.end_time, model.identifier, min_x, min_y, max_x, max_y),)
 
         # create the output
         output = CDAsciiTextBuffer()
