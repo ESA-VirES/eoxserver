@@ -33,17 +33,17 @@ from django.conf import settings
 
 from eoxserver.core.util.iteratortools import pairwise_iterative
 from eoxserver.contrib import mapserver as ms
-from eoxserver.resources.coverages import models, crss
+from eoxserver.resources.coverages import crss
 from eoxserver.services.mapserver.wms.layerfactories.base import (
     AbstractLayerFactory
 )
 
+from vires import models
+
 
 class MeasurementLayerFactory(AbstractLayerFactory):
-    handles = (models.RectifiedDataset, models.ReferenceableDataset,
-               models.RectifiedStitchedMosaic,)
+    handles = (models.Product, models.ProductCollection)
     suffixes = ("_measurement",)
-    requires_connection = False
 
     def generate(self, eo_object, group_layer, suffix, options):
         # don't generate any layers, but add the footprint as feature to the
@@ -129,8 +129,8 @@ class MeasurementLayerFactory(AbstractLayerFactory):
             style.minvalue = minvalue + i * step
             style.maxvalue = minvalue + (i + 1) * step
 
-            style.minsize = 5
-            style.maxsize = 10
+            style.minsize = 0
+            style.maxsize = 10 - i
 
             style.rangeitem = "value"
             style.setBinding(ms.MS_STYLE_BINDING_SIZE, "value")

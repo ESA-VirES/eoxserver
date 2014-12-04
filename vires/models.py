@@ -99,3 +99,9 @@ class ProductCollection(Product, Collection):
         self.save()
 
 EO_OBJECT_TYPE_REGISTRY[210] = ProductCollection
+
+
+class ForwardModel(Coverage):
+    objects = models.GeoManager()
+
+EO_OBJECT_TYPE_REGISTRY[250] = ForwardModel

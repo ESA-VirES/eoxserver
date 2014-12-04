@@ -28,7 +28,8 @@
 #from django.contrib.gis import forms
 from django.contrib.gis import admin
 from eoxserver.resources.coverages.admin import (
-    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline
+    CoverageAdmin, CollectionAdmin, EOObjectInline, CollectionInline,
+    DataItemInline
 )
 
 from vires import models
@@ -66,3 +67,9 @@ class ProductCollectionAdmin(CollectionAdmin):
     inlines = (EOObjectInline, CollectionInline)
 
 admin.site.register(models.ProductCollection, ProductCollectionAdmin)
+
+
+class ForwardModelAdmin(CoverageAdmin):
+    inlines = (DataItemInline,)
+
+admin.site.register(models.ForwardModel, ForwardModelAdmin)

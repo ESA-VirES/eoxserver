@@ -1,0 +1,101 @@
+#-------------------------------------------------------------------------------
+# $Id$
+#
+# Project: EOxServer <http://eoxserver.org>
+# Authors: Fabian Schindler <fabian.schindler@eox.at>
+#
+#-------------------------------------------------------------------------------
+# Copyright (C) 2014 EOX IT Services GmbH
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies of this Software or works derived from this Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#-------------------------------------------------------------------------------
+
+from datetime import datetime, timedelta
+
+from django.utils.timezone import make_aware, utc
+from eoxserver.core import Component, implements
+import eoxmagmod
+import numpy
+
+from vires.interfaces import ForwardModelProviderInterface
+from vires.util import get_total_seconds
+
+
+def decimal_to_datetime(raw_value):
+    """ Converts a decimal year representation to a Python datetime.
+    """
+    year = int(raw_value)
+    rem = raw_value - year
+
+    base = make_aware(datetime(year, 1, 1), utc)
+    return base + timedelta(
+        seconds=get_total_seconds(base.replace(year=base.year + 1) - base) * rem
+    )
+
+
+class BaseForwardModel(Component):
+    """ Abstract base class for forward model providers using the eoxmagmod
+        library.
+    """
+
+    implements(ForwardModelProviderInterface)
+
+    abstract = True
+
+    def evaluate(self, data_item, field, bbox, size_x, size_y, elevation, date):
+        model = self.get_model(data_item)
+        lons = numpy.linspace(bbox[0], bbox[2], size_x, endpoint=True)
+        lats = numpy.linspace(bbox[3], bbox[1], size_y, endpoint=True)
+
+        lons, lats = numpy.meshgrid(lons, lats)
+
+        arr = numpy.empty((size_y, size_x, 3))
+        arr[:, :, 0] = lats
+        arr[:, :, 1] = lons
+        arr[:, :, 2] = elevation
+
+        values = model.eval(arr, date)
+        if field == "F":
+            return eoxmagmod.vnorm(values)
+        elif field == "H":
+            return eoxmagmod.vnorm(values[..., 0:2])
+
+        elif field == "X":
+            return values[..., 0]
+        elif field == "Y":
+            return values[..., 1]
+        elif field == "Z":
+            return values[..., 2]
+        elif field == "I":
+            return eoxmagmod.vincdecnorm(values)[0]
+        elif field == "D":
+            return eoxmagmod.vincdecnorm(values)[1]
+
+        else:
+            raise Exception("Invalid field '%s'." % field)
+
+    @property
+    def time_validity(self):
+        return map(decimal_to_datetime, self.get_model(None).validity)
+
+    def get_model(self):
+        """ Interface method. Shall return any model from the eoxmagmod
+            library.
+        """
+        raise NotImplementedError
