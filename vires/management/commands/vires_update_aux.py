@@ -32,47 +32,23 @@ from django.core.management.base import CommandError, BaseCommand
 from eoxserver.resources.coverages.management.commands import (
     CommandOutputMixIn, nested_commit_on_success
 )
-from eoxserver.resources.coverages import models
-
-from vires.models import ProductCollection
 from vires import aux
 
 
 class Command(CommandOutputMixIn, BaseCommand):
     option_list = BaseCommand.option_list + (
-        make_option("--dst-filename", dest="dst_filename",
+        make_option("--dst-filename", "--dst", dest="dst_filename",
             action="store", default=None,
-            help=("Mandatory. Collection identifier.")
+            help=("")
         ),
-        make_option("--dst-filename", dest="dst_filename",
+        make_option("--kp-filename", "--kp", dest="kp_filename",
             action="store", default=None,
-            help=("Mandatory. Collection identifier.")
+            help=("")
         ),
     )
 
     @nested_commit_on_success
     def handle(self, *args, **kwargs):
-        identifier = kwargs["identifier"]
-        range_type_name = kwargs["range_type_name"]
-
-        if not identifier:
-            raise CommandError("No identifier specified.")
-
-        if range_type_name is None:
-            raise CommandError("No range type name specified.")
-        range_type = models.RangeType.objects.get(name=range_type_name)
-
-        collection = ProductCollection()
-        collection.identifier = identifier
-        collection.range_type = range_type
-
-        collection.srid = 4326
-        collection.min_x = -180
-        collection.min_y = -90
-        collection.max_x = 180
-        collection.max_y = 90
-        collection.size_x = 0
-        collection.size_y = 1
-
-        collection.full_clean()
-        collection.save()
+        print kwargs["dst_filename"]
+        print kwargs["kp_filename"]
+        aux.update_db(kwargs["dst_filename"], kwargs["kp_filename"])

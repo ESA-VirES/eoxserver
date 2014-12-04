@@ -57,6 +57,7 @@ from spacepy import pycdf
 from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
+from vires import aux
 
 import eoxmagmod as mm
 
@@ -149,7 +150,7 @@ class retrieve_data(Component):
         writer = csv.writer(f)
 
         range_type = collections[0].range_type
-        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_wmm2010", "Fres_wmm2010"])
+        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_wmm2010", "Fres_wmm2010", "dst", "kp"])
         # TODO: assert that the range_type is equal for all collections
 
         for collection_id in collection_ids:
@@ -197,7 +198,12 @@ class retrieve_data(Component):
         output_data["F_wmm2010"] = mm.vnorm(GMM.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL))
         output_data["Fres_wmm2010"] = output_data["F"] - output_data["F_wmm2010"]
 
-
+        aux_data = aux.query_db(
+            output_data["Timestamp"][0], output_data["Timestamp"][-1],
+            len(output_data["Timestamp"])
+        )
+        output_data["dst"] = aux_data["dst"]
+        output_data["kp"] = aux_data["kp"]
 
         for row in izip(*output_data.itervalues()):
             writer.writerow([collection_id] + map(translate, row))
