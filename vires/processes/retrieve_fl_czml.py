@@ -28,6 +28,7 @@
 import json
 import csv
 import math
+import struct
 import datetime as dt
 import time
 from itertools import izip
@@ -172,6 +173,8 @@ class retrieve_fl_czml(Component):
 
         for model_id, color in zip(model_ids, colors):
 
+            color = struct.unpack('BBB', color.decode('hex'))
+
             if model_id == "wmm2010":
                 model = read_model_wmm2010()
             elif model_id == "chaos5":
@@ -209,7 +212,7 @@ class retrieve_fl_czml(Component):
         id = str(uuid4())
 
         tmp.write(',{"id":"%s-%d","polyline":{"width":2,"material":{"solidColor":{"color":{"rgba":[%d,%d,%d,255]}}},"positions": {"cartesian":%s}}}'
-            %(model_id, cnt, int(255), int(255), int(255), translate(xx)))
+            %(model_id, cnt, color[0], color[1], color[2], translate(xx)))
 
 
 
