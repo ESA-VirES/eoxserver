@@ -1,7 +1,7 @@
 #-------------------------------------------------------------------------------
 #
 # Project: EOxServer <http://eoxserver.org>
-# Authors: Martin Paces <martin.paces@eox.at>
+# Authors: Daniel Santillan <daniel.santillan@eox.at>
 #
 #-------------------------------------------------------------------------------
 # Copyright (C) 2014 EOX IT Services GmbH

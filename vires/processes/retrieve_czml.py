@@ -2,6 +2,7 @@
 #
 # Project: EOxServer <http://eoxserver.org>
 # Authors: Martin Paces <martin.paces@eox.at>
+#          Daniel Santillan <daniel.santillan@eox.at>
 #
 #-------------------------------------------------------------------------------
 # Copyright (C) 2014 EOX IT Services GmbH
@@ -28,6 +29,7 @@
 import json
 import csv
 import math
+import struct
 import datetime as dt
 import time
 from itertools import izip
@@ -60,6 +62,10 @@ from vires.util import get_total_seconds
 
 import eoxmagmod as mm
 import matplotlib.cm
+from matplotlib.colors import LinearSegmentedColormap
+from eoxmagmod import (
+    GEODETIC_ABOVE_WGS84, GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN, convert, vrot_sph2cart, vnorm,
+)
 
 def toYearFraction(dt_start, dt_end):
     def sinceEpoch(date): # returns seconds since epoch
@@ -118,6 +124,18 @@ class retrieve_czml(Component):
         ("end_time", LiteralData('end_time', dt.datetime, optional=False,
             abstract="End of the time interval",
         )),
+        ("band", LiteralData('band', str, optional=True,
+            default="F", abstract="Band wished to be visualized",
+        )),
+        ("dim_range", LiteralData('dim_range', str, optional=True,
+            default="30000,60000", abstract="Range dimension for visualized parameter",
+        )),
+        ("colors", LiteralData('colors', str, optional=True,
+            default="", abstract="Colors for product identification",
+        )),
+        ("style", LiteralData('style', str, optional=True,
+            default="jet", abstract="Colormap to be applied to visualization",
+        )),
         ("resolution", LiteralData('resolution', int, optional=True,
             default=20, abstract="Resolution attribute to define step size for returned elements",
             #TODO: think about how we want to implement this, maybe the process should check
@@ -136,12 +154,18 @@ class retrieve_czml(Component):
         ),
     ]
 
-    def execute(self, collection_ids, begin_time, end_time, resolution, **kwarg):
+    def execute(self, collection_ids, begin_time, end_time, band, dim_range, colors, style, resolution, **kwarg):
         outputs = {}
 
         collection_ids = collection_ids.split(",")
+        dim_range = [int(x) for x in dim_range.split(",")]
 
         collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
+
+        if colors != "":
+            colors = colors.split(",")
+        else:
+            colors = [None] * len(collection_ids)
         
         sio = StringIO()
 
@@ -154,7 +178,11 @@ class retrieve_czml(Component):
 
         # TODO: assert that the range_type is equal for all collections
 
-        for collection_id in collection_ids:
+        for collection_id, color in zip(collection_ids, colors):
+
+            if color != None:
+                color = struct.unpack('BBB', color.decode('hex'))
+
             coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
             coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
             coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
@@ -166,7 +194,7 @@ class retrieve_czml(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp)
+                self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, band, color, dim_range, style, tmp)
 
 
         tmp.write(']')
@@ -175,15 +203,48 @@ class retrieve_czml(Component):
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, tmp):
+    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, req_band, color, dim_range, style, tmp):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
         ds = pycdf.CDF(filename)
         output_data = OrderedDict()
 
-        cs = matplotlib.cm.ScalarMappable(cmap="jet")
-        cs.set_clim(30000,60000)
+
+        cdict = {
+            'red': [],
+            'green': [],
+            'blue': [],
+        }
+
+        clist = [
+            (0.0,[150,0,90]),
+            (0.125,[0,0,200]),
+            (0.25,[0,25,255]),
+            (0.375,[0,152,255]),
+            (0.5,[44,255,150]),
+            (0.625,[151,255,0]),
+            (0.75,[255,234,0]),
+            (0.875,[255,111,0]),
+            (1.0,[255,0,0]),
+        ]
+
+        for x, (r, g, b) in clist:
+            r = r / 255.
+            g = g / 255.
+            b = b / 255.
+            cdict["red"].append((x, r, r))
+            cdict["green"].append((x, g, g))
+            cdict["blue"].append((x, b, b))
+
+        rainbow = LinearSegmentedColormap('rainbow', cdict)
+
+
+        if style == "rainbow":
+            style = "gist_rainbow_r"
+
+        cs = matplotlib.cm.ScalarMappable(cmap=rainbow)
+        cs.set_clim(dim_range[0],dim_range[1])
 
         # Read data
         for band in range_type:
@@ -193,16 +254,54 @@ class retrieve_czml(Component):
         lons = output_data["Longitude"]
         lats = output_data["Latitude"]
         rads = output_data["Radius"]
-        fs = output_data["F"]
-        identifier = coverage.identifier
-        
-        for i, (lon, lat, r, f) in enumerate(izip(lons, lats, rads, fs)):
-            clr = cs.to_rgba(f)
-            #id = str(uuid4())
 
-            tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
-                %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
-            tmp.write('"position":{"cartographicDegrees":[%f,%f,%d]}}'%(lon, lat, int(r-6384000)))
+        if req_band == "F":
+
+            fs = output_data["F"]
+            identifier = coverage.identifier
+            
+            for i, (lon, lat, r, f) in enumerate(izip(lons, lats, rads, fs)):
+                clr = cs.to_rgba(f)
+                #id = str(uuid4())
+                if color:
+                    tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},"outlineColor":{"rgba":[%d,%d,%d,255]},"outlineWidth":1,'
+                        %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256), color[0], color[1], color[2]))
+                else:
+                    tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
+                        %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
+
+                tmp.write('"position":{"cartographicDegrees":[%f,%f,%d]}}'%(lon, lat, int(r-6384000)))
+
+
+
+        elif req_band == "B_NEC":
+
+            identifier = coverage.identifier
+            bnecs = output_data["B_NEC"]
+            bnecs[:,2] = 0*bnecs[:,2]
+            tmp1 = 1e5*1.0/vnorm(bnecs)
+            bnecs[:,0] = bnecs[:,0]*tmp1
+            bnecs[:,1] = bnecs[:,1]*tmp1
+            bcarts = vrot_sph2cart(bnecs, lats.reshape((lats.size,1)), lons.reshape((lons.size,1)))
+            
+            cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
+
+            if color == None:
+                color = [255,255,255];
+            
+            for i, (p, bcart) in enumerate(izip(cart_p, bcarts)):
+                #clr = cs.to_rgba(f)
+                id = str(uuid4())
+
+                tmp.write(',{"id":"%s-%d","polyline":{"followSurface":false,"width":2, "material":{"solidColor":{"color":{"rgba":[%d,%d,%d,255]}}},"positions": {"cartesian":[%d,%d,%d,%d,%d,%d]}}}'
+                            %(identifier, i, color[0], color[1], color[2], p[0], p[1], p[2], p[0]+bcart[0], p[1]+bcart[1], p[2]+bcart[2]))
+
+
+                #color[0], color[1], color[2]
+
+                # tmp.write(',{"id":"%s-%d","polyline":{"width":2,"show":true,"color":{"rgba":[%d,%d,%d,255]}},"followSurface":false,'
+                #     %(identifier, i, int(255),int(255),int(255)))
+                # tmp.write('"positions":{"cartesian":[%d,%d,%d,%d,%d,%d]}}'%(p[0], p[1], p[2], p[0]+bnec[0], p[1]+bnec[1], p[2]+bnec[2]))
 
 
         
