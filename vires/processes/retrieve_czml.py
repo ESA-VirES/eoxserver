@@ -241,9 +241,9 @@ class retrieve_czml(Component):
 
 
         if style == "rainbow":
-            style = "gist_rainbow_r"
+            style = rainbow
 
-        cs = matplotlib.cm.ScalarMappable(cmap=rainbow)
+        cs = matplotlib.cm.ScalarMappable(cmap=style)
         cs.set_clim(dim_range[0],dim_range[1])
 
         # Read data
@@ -264,8 +264,8 @@ class retrieve_czml(Component):
                 clr = cs.to_rgba(f)
                 #id = str(uuid4())
                 if color:
-                    tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},"outlineColor":{"rgba":[%d,%d,%d,255]},"outlineWidth":1,'
-                        %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256), color[0], color[1], color[2]))
+                    tmp.write(',{"id":"%s-%d","point":{"outlineColor":{"rgba":[%d,%d,%d,255]},"outlineWidth":1,"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
+                        %(identifier, i, color[0], color[1], color[2], int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
                 else:
                     tmp.write(',{"id":"%s-%d","point":{"pixelSize":10,"show":true,"color":{"rgba":[%d,%d,%d,255]}},'
                         %(identifier, i, int(clr[0]*256),int(clr[1]*256),int(clr[2]*256)))
