@@ -158,7 +158,7 @@ class retrieve_czml(Component):
         outputs = {}
 
         collection_ids = collection_ids.split(",")
-        dim_range = [int(x) for x in dim_range.split(",")]
+        dim_range = [float(x) for x in dim_range.split(",")]
 
         collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
 
