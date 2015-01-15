@@ -143,6 +143,8 @@ class load_shc(Component):
     def execute(self, shc, begin_time, end_time, band, dim_range, style, output, **kwarg):
         outputs = {}
 
+        dim_range = [float(x) for x in dim_range.split(",")]
+
         cdict = {
             'red': [],
             'green': [],
