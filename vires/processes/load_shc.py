@@ -143,22 +143,39 @@ class load_shc(Component):
     def execute(self, shc, begin_time, end_time, band, dim_range, style, output, **kwarg):
         outputs = {}
 
-        # the shc temp file
-        # TODO: update Magnetic Model library to be able to pass object directly
-        # basename = "%s_%s"%( "tmp_shc",uuid4().hex )
-        # shc_file = "/tmp/%s.shc" %( basename )
+        cdict = {
+            'red': [],
+            'green': [],
+            'blue': [],
+        }
 
-        # try:
-        #     with open(shc_file, 'w') as f:
-        #         f.write(shc.read())
-        # except Exception as e: 
-        #     if os.path.isfile(shc_file):
-        #         os.remove(shc_file)
-        #     raise e
-        #raise Exception(repr(shc.read(500)))
+        clist = [
+            (0.0,[150,0,90]),
+            (0.125,[0,0,200]),
+            (0.25,[0,25,255]),
+            (0.375,[0,152,255]),
+            (0.5,[44,255,150]),
+            (0.625,[151,255,0]),
+            (0.75,[255,234,0]),
+            (0.875,[255,111,0]),
+            (1.0,[255,0,0]),
+        ]
+
+        for x, (r, g, b) in clist:
+            r = r / 255.
+            g = g / 255.
+            b = b / 255.
+            cdict["red"].append((x, r, r))
+            cdict["green"].append((x, g, g))
+            cdict["blue"].append((x, b, b))
+
+        rainbow = LinearSegmentedColormap('rainbow', cdict)
+
+
+        if style == "rainbow":
+            style = rainbow
+
         model = mm.read_model_shc(shc)
-
-        # os.remove(shc_file)
 
         dlat = 0.5
         dlon = 0.5
@@ -192,8 +209,8 @@ class load_shc(Component):
         try:
             #fig = pyplot.imshow(pix_res,interpolation='nearest')
             #fig = pyplot.imshow(m_field,vmin=dim_range[0], vmax=dim_range[1], interpolation='nearest')
-            fig = pyplot.imshow(m_ints3, interpolation='nearest')
-            fig.set_cmap('jet')
+            fig = pyplot.imshow(m_ints3, vmin=dim_range[0], vmax=dim_range[1], interpolation='nearest')
+            fig.set_cmap(style)
             fig.write_png(filename_png, True)
 
             result = CDFile(filename_png, **output)
