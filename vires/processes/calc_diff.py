@@ -91,14 +91,26 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
+def getModel(modelid):
+    if modelid == "CHAOS-5-Combined":
+        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
+    if modelid == "EMM":
+        return mm.emm.read_model_emm2010()
+    if modelid == "IGRF":
+        return mm.igrf.read_model_igrf11()
+    if modelid == "WMM":
+        return mm.read_model_wmm2010()
 
-class load_shc(Component):
+
+
+
+class calc_diff(Component):
     """ Process to retrieve registered data (focused on Swarm data)
     """
     implements(ProcessInterface)
 
-    identifier = "load_shc"
-    title = "Load and process SHC coefficient file returning image of resulting harmonic expansion"
+    identifier = "calc_diff"
+    title = "Calculate the difference between registered models or uploaded shc file"
     metadata = {"test-metadata":"http://www.metadata.com/test-metadata"}
     profiles = ["test_profile"]
 
@@ -106,8 +118,12 @@ class load_shc(Component):
         ("shc", ComplexData('shc',
                 title="SHC file data",
                 abstract="SHC file data to be processed.",
-                formats=(FormatText('text/plain')
+                optional=True,
+                formats=(FormatText('text/plain'),
             )
+        )),
+        ("model_ids", LiteralData('model_ids', str, optional=False,
+            abstract="One model id to compare to shc model or two comma separated ids",
         )),
         ("begin_time", LiteralData('begin_time', dt.datetime, optional=False,
             abstract="Start of the time interval",
@@ -119,7 +135,7 @@ class load_shc(Component):
             default="F", abstract="Band wished to be visualized",
         )),
         ("dim_range", LiteralData('dim_range', str, optional=True,
-            default="30000,60000", abstract="Range dimension for visualized parameter",
+            default="0,100", abstract="Range dimension for visualized parameter",
         )),
         ("style", LiteralData('style', str, optional=True,
             default="jet", abstract="Colormap to be applied to visualization",
@@ -131,8 +147,8 @@ class load_shc(Component):
 
 
     outputs = [
-        ("output",
-            ComplexData('output',
+        ("difference_image",
+            ComplexData('difference_image',
                 title="Spehrical expansion result image",
                 abstract="Returns the styled result image of the spherical expansion as png",
                 formats=(
@@ -141,10 +157,15 @@ class load_shc(Component):
                 )
             )
         ),
+        ("style_range", LiteralData('style_range', str,
+            abstract="Range and style definition as string"
+        )),
     ]
 
-    def execute(self, shc, begin_time, end_time, band, dim_range, style, height, output, **kwarg):
+    def execute(self, shc, model_ids, begin_time, end_time, band, dim_range, style, height, difference_image, **kwarg):
         outputs = {}
+
+        style_str = style
 
         dim_range = [float(x) for x in dim_range.split(",")]
 
@@ -180,12 +201,31 @@ class load_shc(Component):
         if style == "rainbow":
             style = rainbow
 
-        model = mm.read_model_shc(shc)
+        m1 = None
+        m2 = None
+
+        model_ids = model_ids.split(",")
+
+        # Two model ids are passed
+        if len(model_ids) == 2:
+            m1 = getModel(model_ids[0])
+            m2 = getModel(model_ids[1])
+
+        # One model id passed to compare to shc file
+        elif len(model_ids) == 1:
+            m1 = getModel(model_ids[0])
+            m2 = mm.read_model_shc(shc)
+
+        else:
+            # TODO: Can i handle the error like this?
+            raise Exception("Either two model ids or a model id and a shc file need to be provided")
+
+
+        model = m1 - m2
 
         dlat = 0.5
         dlon = 0.5
 
-        #height = 0  
         lat = np.linspace(90.0,-90.0,int(1+180/dlat))
         lon = np.linspace(-180.0,180.0,int(1+360/dlon))
 
@@ -204,8 +244,8 @@ class load_shc(Component):
         m_ints3 = vnorm(model.eval(coord_wgs84, date, GEODETIC_ABOVE_WGS84, GEODETIC_ABOVE_WGS84,
             secvar=False, maxdegree=maxdegree, mindegree=mindegree, check_validity=False))
 
-        # calculate inclination, declination, intensity
-        #m_inc, m_dec, m_ints3 = vincdecnorm(m_field)
+        dim_range[0] = np.amin(m_ints3) 
+        dim_range[1] = np.amax(m_ints3) 
 
         # the output image
         basename = "%s_%s"%( "shc_result-",uuid4().hex )
@@ -218,7 +258,7 @@ class load_shc(Component):
             fig.set_cmap(style)
             fig.write_png(filename_png, True)
 
-            result = CDFile(filename_png, **output)
+            result = CDFile(filename_png, **difference_image)
 
             # with open(filename_png) as f:
             #     output = f.read()
@@ -235,7 +275,8 @@ class load_shc(Component):
 
         #return base64.b64encode(output)
         
-        outputs['output'] = result
+        outputs['difference_image'] = result
+        outputs['style_range'] = "%s,%s,%s"%(style_str, dim_range[0], dim_range[1])
 
         return outputs
 
