@@ -59,7 +59,7 @@ from vires import models
 from vires.util import get_total_seconds
 from vires import aux
 
-import eoxmagmod
+import eoxmagmod as mm
 
 def toYearFraction(dt_start, dt_end):
     def sinceEpoch(date): # returns seconds since epoch
@@ -78,7 +78,17 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
-CH5M = eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_CORE)# + eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_STATIC) 
+def getModel(modelid):
+    if modelid == "CHAOS-5-Combined":
+        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
+    if modelid == "EMM":
+        return mm.emm.read_model_emm2010()
+    if modelid == "IGRF":
+        return mm.igrf.read_model_igrf11()
+    if modelid == "WMM":
+        return mm.read_model_wmm2010()
+
+#CH5M = eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_CORE)# + eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_STATIC) 
 
 CRSS = (
     4326,  # WGS84
@@ -112,6 +122,16 @@ class retrieve_data(Component):
         ("collection_ids", LiteralData('collection_ids', str, optional=False,
             abstract="String input for collection identifiers (semicolon separator)",
         )),
+        ("shc", ComplexData('shc',
+                title="SHC file data",
+                abstract="SHC file data to be processed.",
+                optional=True,
+                formats=(FormatText('text/plain'),
+            )
+        )),
+        ("model_ids", LiteralData('model_ids', str, optional=True, default="",
+            abstract="One model id to compare to shc model or two comma separated ids",
+        )),
         ("begin_time", LiteralData('begin_time', dt.datetime, optional=False,
             abstract="Start of the time interval",
         )),
@@ -139,18 +159,36 @@ class retrieve_data(Component):
         ),
     ]
 
-    def execute(self, collection_ids, begin_time, end_time, bbox, resolution, **kwarg):
+    def execute(self, collection_ids, shc, model_ids, begin_time, end_time, bbox, resolution, **kwarg):
         outputs = {}
 
         collection_ids = collection_ids.split(",")
 
         collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
-        
+
+        model_ids = model_ids.split(",")
+        mm_models = [getModel(x) for x in model_ids]
+
+        if len(mm_models)>0 and mm_models[0] is None:
+            mm_models = []
+            model_ids = []
+
+        if shc:
+            model_ids.append("Custom_Model")
+            mm_models.append(mm.read_model_shc(shc))
+
         f = StringIO()
         writer = csv.writer(f)
 
         range_type = collections[0].range_type
-        writer.writerow(["id"] + [band.identifier for band in range_type] + ["F_CHAOS5", "F_res_chaos5", "B_NEC_res_chaos5", "dst", "kp"])
+
+        add_range_type = []
+        if len(model_ids)>0 and model_ids[0] != '':
+            for mid in model_ids:
+                    add_range_type.append("F_res_%s"%(mid))
+                    add_range_type.append("B_NEC_res_%s"%(mid))
+
+        writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp"])
         # TODO: assert that the range_type is equal for all collections
 
         for collection_id in collection_ids:
@@ -165,7 +203,7 @@ class retrieve_data(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, bbox)
+                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox)
 
 
         outputs['output'] = f
@@ -173,7 +211,7 @@ class retrieve_data(Component):
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, bbox=None):
+    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
@@ -195,15 +233,23 @@ class retrieve_data(Component):
        
         coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
 
-        chaos5_data = CH5M.eval(coords_sph, toYearFraction(begin_time, end_time), eoxmagmod.GEOCENTRIC_SPHERICAL)
-        chaos5_data[:,2] *= -1
+        #raise Exception(mm_models)
+        if len(mm_models)>0:
 
-        output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
-        output_data["F_res_chaos5"] = output_data["F"] - output_data["F_CHAOS5"]
+            models_data = [x.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
+            #models_data[:][:,2] *= -1
 
-        nec_data = output_data["B_NEC"]
+            #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
+            for md, mid in zip(models_data, model_ids):
+                label_res = "F_res_%s"%(mid)
+                label_NEC_res = "B_NEC_%s"%(mid)
+                md[:,2] *= -1
+                output_data[label_res] = output_data["F"] - mm.vnorm(md)
+                output_data[label_NEC_res] = output_data["B_NEC"] - md
 
-        output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
+            #nec_data = output_data["B_NEC"]
+
+            #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
 
         aux_data = aux.query_db(
             output_data["Timestamp"][0], output_data["Timestamp"][-1],
