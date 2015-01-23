@@ -116,13 +116,30 @@ def _read_cdf(filename, start, stop, fields):
     end = cdf["time"][-1]
     resolution = (end - begin) / len(cdf["time"])
 
-    if start < begin or stop > end:
+    # TODO: Think how getting out of bound should be handled
+    if start > stop:
+        tmp = stop
+        stop = start
+        start = tmp
+    if start > end or stop < start:
         raise ValueError("Request outside of defined aux bounds: [%s, %s]"
             % (
                 isoformat(mjd2000_to_datetime(begin)),
                 isoformat(mjd2000_to_datetime(end))
             )
         )
+    if start < begin:
+        start = begin
+    if stop > end:
+        stop = end
+
+    # if start < begin or stop > end:
+    #     raise ValueError("Request outside of defined aux bounds: [%s, %s]"
+    #         % (
+    #             isoformat(mjd2000_to_datetime(begin)),
+    #             isoformat(mjd2000_to_datetime(end))
+    #         )
+    #     )
 
     low = int(math.floor((start - begin) / resolution))
     high = int(math.ceil((stop - begin) / resolution))
@@ -163,3 +180,31 @@ def query_db(start, stop, count):
     values.update(_query_kp(input_arr, start, stop))
 
     return values
+
+
+# Query Not Interpolated Dst values
+def query_dst_ni(start, stop):
+    start = datetime_to_mjd2000(start)
+    stop = datetime_to_mjd2000(stop)
+    values = _read_cdf(
+        settings.VIRES_AUX_DB_DST, start, stop,
+        ("time", "dst")
+    )
+    values["time"] = map(float, values["time"])
+
+    return values
+
+# Query Not Interpolated kp values
+def query_kp_ni(start, stop):
+    start = datetime_to_mjd2000(start)
+    stop = datetime_to_mjd2000(stop)
+    values = _read_cdf(
+        settings.VIRES_AUX_DB_KP, start, stop,
+        ("time", "kp")
+    )
+
+    values["time"] = map(float, values["time"])
+
+    return values
+
+
