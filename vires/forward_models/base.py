@@ -70,7 +70,7 @@ class BaseForwardModel(Component):
         arr[:, :, 1] = lons
         arr[:, :, 2] = elevation
 
-        values = model.eval(arr, date)
+        values = model.eval(arr, date, check_validity=False)
         if field == "F":
             return eoxmagmod.vnorm(values)
         elif field == "H":

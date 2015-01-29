@@ -77,13 +77,17 @@ class ForwardModelLayerFactory(BaseCoverageLayerFactory):
             layer.insertClass(cls)
 
         create_style("rainbow", layer, (
-            ms.colorObj(127, 0, 127),  # lila
-            ms.colorObj(0, 0, 255),    # blue
-            ms.colorObj(0, 255, 255),  # light blue
-            ms.colorObj(255, 255, 0),  # yellow
-            ms.colorObj(255, 127, 0),  # orange
-            ms.colorObj(255, 0, 0),    # red
+            ms.colorObj(150,0,90),  
+            ms.colorObj(0,0,200),    
+            ms.colorObj(0,25,255),  
+            ms.colorObj(0,152,255),  
+            ms.colorObj(44,255,150),  
+            ms.colorObj(151,255,0),
+            ms.colorObj(255,234,0),
+            ms.colorObj(255,111,0),
+            ms.colorObj(255,0,0),  
         ), minvalue, maxvalue)
+
 
         create_style("jet", layer, (
             ms.colorObj(0, 0, 144),
