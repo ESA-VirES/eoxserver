@@ -174,6 +174,9 @@ class retrieve_fl_czml(Component):
         colors = colors.split(",")
         dim_range = [float(x) for x in dim_range.split(",")]
 
+        if logarithmic:
+            dim_range = np.log10(dim_range)
+
         time = toYearFraction(begin_time, end_time)
 
         sio = StringIO()
