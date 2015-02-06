@@ -78,6 +78,24 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
+
+def toYearFraction(date):
+    def sinceEpoch(date): # returns seconds since epoch
+        return time.mktime(date.timetuple())
+ 
+    s = sinceEpoch
+
+    year = date.year
+    startOfThisYear = dt.datetime(year=year, month=1, day=1)
+    startOfNextYear = dt.datetime(year=year+1, month=1, day=1)
+
+    yearElapsed = s(date) - s(startOfThisYear)
+    yearDuration = s(startOfNextYear) - s(startOfThisYear)
+    fraction = yearElapsed/yearDuration
+
+    return date.year + fraction
+
+
 def getModel(modelid):
     if modelid == "CHAOS-5-Combined":
         return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
@@ -188,7 +206,7 @@ class retrieve_data(Component):
                     add_range_type.append("F_res_%s"%(mid))
                     add_range_type.append("B_NEC_res_%s"%(mid))
 
-        writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp"])
+        writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp", "qdlat", "mlt"])
         # TODO: assert that the range_type is equal for all collections
 
         for collection_id in collection_ids:
@@ -230,8 +248,10 @@ class retrieve_data(Component):
 
             for name, data in output_data.items():
                 output_data[name] = output_data[name][mask]
+
+        rads = output_data["Radius"]*1e-3
        
-        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
+        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
 
         #raise Exception(mm_models)
         if len(mm_models)>0:
@@ -257,6 +277,13 @@ class retrieve_data(Component):
         )
         output_data["dst"] = aux_data["dst"]
         output_data["kp"] = aux_data["kp"]
+
+        times = map(toYearFraction, output_data["Timestamp"])
+
+        qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
+
+        output_data["qdlat"] = qdlat
+        output_data["mlt"] = mlt
 
         for row in izip(*output_data.itervalues()):
             writer.writerow([collection_id] + map(translate, row))
