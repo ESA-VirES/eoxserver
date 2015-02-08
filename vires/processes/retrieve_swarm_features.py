@@ -2,6 +2,7 @@
 #
 # Project: EOxServer <http://eoxserver.org>
 # Authors: Martin Paces <martin.paces@eox.at>
+#          Daniel Santillan <daniel.santillan@eox.at>
 #
 #-------------------------------------------------------------------------------
 # Copyright (C) 2014 EOX IT Services GmbH
@@ -28,6 +29,7 @@
 import json
 import csv
 import math
+import struct
 import datetime as dt
 import time
 from itertools import izip
@@ -35,7 +37,7 @@ from lxml import etree
 from StringIO import StringIO
 try:
     # available in Python 2.7+
-    from collections import OrderedDict
+    from collection import OrderedDict
 except ImportError:
     from django.utils.datastructures import SortedDict as OrderedDict
 import numpy as np
@@ -57,11 +59,15 @@ from spacepy import pycdf
 from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
-from vires import aux
 
 import eoxmagmod as mm
+import matplotlib.cm
+from matplotlib.colors import LinearSegmentedColormap
+from eoxmagmod import (
+    GEODETIC_ABOVE_WGS84, GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN, convert, vrot_sph2cart, vnorm,
+)
 
-def toYearFractionInterval(dt_start, dt_end):
+def toYearFraction(dt_start, dt_end):
     def sinceEpoch(date): # returns seconds since epoch
         return time.mktime(date.timetuple())
 
@@ -78,26 +84,8 @@ def toYearFractionInterval(dt_start, dt_end):
 
     return date.year + fraction
 
-
-def toYearFraction(date):
-    def sinceEpoch(date): # returns seconds since epoch
-        return time.mktime(date.timetuple())
- 
-    s = sinceEpoch
-
-    year = date.year
-    startOfThisYear = dt.datetime(year=year, month=1, day=1)
-    startOfNextYear = dt.datetime(year=year+1, month=1, day=1)
-
-    yearElapsed = s(date) - s(startOfThisYear)
-    yearDuration = s(startOfNextYear) - s(startOfThisYear)
-    fraction = yearElapsed/yearDuration
-
-    return date.year + fraction
-
-
 def getModel(modelid):
-    if modelid == "CHAOS-5-Combined":
+    if modelid == "CHAOS-5":
         return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
     if modelid == "EMM":
         return mm.emm.read_model_emm2010()
@@ -106,7 +94,6 @@ def getModel(modelid):
     if modelid == "WMM":
         return mm.read_model_wmm2010()
 
-#CH5M = eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_CORE)# + eoxmagmod.shc.read_model_shc(eoxmagmod.shc.DATA_CHAOS5_STATIC) 
 
 CRSS = (
     4326,  # WGS84
@@ -126,19 +113,19 @@ CRSS = (
     0, # ImageCRS
 )
 
-class retrieve_data(Component):
+class retrieve_swarm_features(Component):
     """ Process to retrieve registered data (focused on Swarm data)
     """
     implements(ProcessInterface)
 
-    identifier = "retrieve_data"
+    identifier = "retrieve_swarm_features"
     title = "Retrieve registered Swarm data based on collection, time intervall, [bbox] and resolution"
     metadata = {"test-metadata":"http://www.metadata.com/test-metadata"}
     profiles = ["test_profile"]
 
     inputs = [
-        ("collection_ids", LiteralData('collection_ids', str, optional=False,
-            abstract="String input for collection identifiers (semicolon separator)",
+        ("collection_id", LiteralData('collection_id', str, optional=False,
+            abstract="String input for collection identifier",
         )),
         ("shc", ComplexData('shc',
                 title="SHC file data",
@@ -156,13 +143,20 @@ class retrieve_data(Component):
         ("end_time", LiteralData('end_time', dt.datetime, optional=False,
             abstract="End of the time interval",
         )),
-        ("bbox", BoundingBoxData("bbox", crss=CRSS, optional=True,
-            default=None,
+        ("band", LiteralData('band', str, optional=True,
+            default="F", abstract="Band wished to be visualized",
+        )),
+        ("dim_range", LiteralData('dim_range', str, optional=True,
+            default="30000,60000", abstract="Range dimension for visualized parameter",
+        )),
+        ("color", LiteralData('color', str, optional=True,
+            default="000000", abstract="Color for product identification",
+        )),
+        ("style", LiteralData('style', str, optional=True,
+            default="jet", abstract="Colormap to be applied to visualization",
         )),
         ("resolution", LiteralData('resolution', int, optional=True,
             default=20, abstract="Resolution attribute to define step size for returned elements",
-            #TODO: think about how we want to implement this, maybe the process should check
-            #      the result size and decide how to handle large amount of elements.
         )),
     ]
 
@@ -171,18 +165,16 @@ class retrieve_data(Component):
         ("output",
             ComplexData('output',
                 title="Requested subset of data",
-                abstract="Process returns subset of data defined by time, bbox and collections.",
+                abstract="Process returns CSV formatted output with coloured product measurement points of collection.",
                 formats=FormatText('text/plain')
             )
         ),
     ]
 
-    def execute(self, collection_ids, shc, model_ids, begin_time, end_time, bbox, resolution, **kwarg):
+    def execute(self, collection_id, model_ids, shc, begin_time, end_time, band, dim_range, color, style, resolution, **kwarg):
         outputs = {}
 
-        collection_ids = collection_ids.split(",")
-
-        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
+        dim_range = [float(x) for x in dim_range.split(",")]
 
         model_ids = model_ids.split(",")
         mm_models = [getModel(x) for x in model_ids]
@@ -195,98 +187,143 @@ class retrieve_data(Component):
             model_ids.append("Custom_Model")
             mm_models.append(mm.read_model_shc(shc))
 
-        f = StringIO()
-        writer = csv.writer(f)
+        collection = models.ProductCollection.objects.get(identifier=collection_id)
 
-        range_type = collections[0].range_type
-
-        add_range_type = []
-        if len(model_ids)>0 and model_ids[0] != '':
-            for mid in model_ids:
-                    add_range_type.append("F_res_%s"%(mid))
-                    add_range_type.append("B_NEC_res_%s"%(mid))
-
-        writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp", "qdlat", "mlt"])
-        # TODO: assert that the range_type is equal for all collections
-
-        for collection_id in collection_ids:
-            coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
-            coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
-            coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
-
-            for coverage in coverages_qs:
-                #collection_id = models.ProductCollection.objects.filter(identifier__in=collection_id)
-                cov_begin_time, cov_end_time = coverage.time_extent
-                cov_cast = coverage.cast()
-                t_res = get_total_seconds(cov_cast.resolution_time)
-                low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
-                high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox)
-
-
-        outputs['output'] = f
         
+        sio = StringIO()
+
+        range_type = collection.range_type
+
+        # file-like text output
+        tmp = CDTextBuffer()
+
+        if band == "B_NEC":
+            tmp.write('id,pos1_x,pos1_y,rad1,pos2_x,pos2_y,rad2,col_r,col_g,col_b')
+        else:
+            tmp.write('id,pos_x,pos_y,rad,col_r,col_g,col_b')
+
+        # TODO: assert that the range_type is equal for all collection
+
+        if color != None:
+            color = struct.unpack('BBB', color.decode('hex'))
+
+        coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
+        coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+        coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+
+        for coverage in coverages_qs:
+            cov_begin_time, cov_end_time = coverage.time_extent
+            cov_cast = coverage.cast()
+            t_res = get_total_seconds(cov_cast.resolution_time)
+            low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+            high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+            self.handle(cov_cast, collection_id, range_type, low, high, resolution, begin_time, end_time, band, color, dim_range, style, mm_models, model_ids, tmp)
+
+        outputs['output'] = tmp
+
         return outputs
 
 
-    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
+    def handle(self, coverage, collection_id, range_type, low, high, resolution, begin_time, end_time, req_band, color, dim_range, style, mm_models, model_ids, tmp):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
         ds = pycdf.CDF(filename)
         output_data = OrderedDict()
 
+
+        cdict = {
+            'red': [],
+            'green': [],
+            'blue': [],
+        }
+
+        clist = [
+            (0.0,[150,0,90]),
+            (0.125,[0,0,200]),
+            (0.25,[0,25,255]),
+            (0.375,[0,152,255]),
+            (0.5,[44,255,150]),
+            (0.625,[151,255,0]),
+            (0.75,[255,234,0]),
+            (0.875,[255,111,0]),
+            (1.0,[255,0,0]),
+        ]
+
+        for x, (r, g, b) in clist:
+            r = r / 255.
+            g = g / 255.
+            b = b / 255.
+            cdict["red"].append((x, r, r))
+            cdict["green"].append((x, g, g))
+            cdict["blue"].append((x, b, b))
+
+        rainbow = LinearSegmentedColormap('rainbow', cdict)
+
+
+        if style == "rainbow":
+            style = rainbow
+
+        cs = matplotlib.cm.ScalarMappable(cmap=style)
+        cs.set_clim(dim_range[0],dim_range[1])
+
         # Read data
         for band in range_type:
             data = ds[band.identifier]
             output_data[band.identifier] = data[low:high:resolution]
 
-        if bbox:
-            lons = output_data["Longitude"]
-            lats = output_data["Latitude"]
-            mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
+        lons = output_data["Longitude"]
+        lats = output_data["Latitude"]
+        rads = output_data["Radius"]
 
-            for name, data in output_data.items():
-                output_data[name] = output_data[name][mask]
+        if req_band == "F":
 
-        rads = output_data["Radius"]*1e-3
-       
-        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
+            cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
 
-        #raise Exception(mm_models)
-        if len(mm_models)>0:
+            fs = output_data["F"]
+            identifier = coverage.identifier
+            
+            for i, (p, f) in enumerate(izip(cart_p, fs)):
+                clr = cs.to_rgba(f)
+                tmp.write('\n%s-%d,%f,%f,%d,%d,%d,%d'
+                        %(identifier, i, p[0], p[1], p[2], int(clr[0]*255),int(clr[1]*255),int(clr[2]*255)))
 
-            models_data = [x.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
-            #models_data[:][:,2] *= -1
 
-            #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
-            for md, mid in zip(models_data, model_ids):
-                label_res = "F_res_%s"%(mid)
-                label_NEC_res = "B_NEC_%s"%(mid)
-                md[:,2] *= -1
-                output_data[label_res] = output_data["F"] - mm.vnorm(md)
-                output_data[label_NEC_res] = output_data["B_NEC"] - md
+        elif req_band == "B_NEC":
 
-            #nec_data = output_data["B_NEC"]
+            cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
 
-            #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
+            if len(mm_models)>0:
+                #rads = output_data["Radius"]*1e-3
+                coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], output_data["Radius"]*1e-3)).T
+                models_data = [x.eval(coords_sph, toYearFraction(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
 
-        aux_data = aux.query_db(
-            output_data["Timestamp"][0], output_data["Timestamp"][-1],
-            len(output_data["Timestamp"])
-        )
-        output_data["dst"] = aux_data["dst"]
-        output_data["kp"] = aux_data["kp"]
+                for md, mid in zip(models_data, model_ids):
+                    md[:,2] *= -1
+                    fs = output_data["F"] - mm.vnorm(md)
+                    bnecs = output_data["B_NEC"] - md
+                scale = 4e5
+            else:
+                bnecs = output_data["B_NEC"]
+                fs = output_data["F"]
+                scale = 2e5
 
-        times = map(toYearFraction, output_data["Timestamp"])
 
-        qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
 
-        output_data["qdlat"] = qdlat
-        output_data["mlt"] = mlt
+            identifier = coverage.identifier
+            bnecs[:,2] = 0*bnecs[:,2]
+            tmp1 = scale*1.0/vnorm(bnecs)
+            bnecs[:,0] = bnecs[:,0]*tmp1
+            bnecs[:,1] = bnecs[:,1]*tmp1
+            bcarts = vrot_sph2cart(bnecs, lats.reshape((lats.size,1)), lons.reshape((lons.size,1)))
+            
+            
 
-        for row in izip(*output_data.itervalues()):
-            writer.writerow([collection_id] + map(translate, row))
+            for i, (p, bcart, f) in enumerate(izip(cart_p, bcarts, fs)):
+                clr = cs.to_rgba(f)
+                tmp.write('\n%s-%d,%f,%f,%d,%f,%f,%d,%d,%d,%d'
+                        %(identifier, i, p[0], p[1], p[2], p[0]+bcart[0], p[1]+bcart[1], p[2]+bcart[2],int(clr[0]*255),int(clr[1]*255),int(clr[2]*255) ))
+
         
 def translate(arr):
 
