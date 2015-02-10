@@ -182,111 +182,212 @@ class retrieve_data(Component):
 
         collection_ids = collection_ids.split(",")
 
-        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
-
-        model_ids = model_ids.split(",")
-        mm_models = [getModel(x) for x in model_ids]
-
-        if len(mm_models)>0 and mm_models[0] is None:
-            mm_models = []
-            model_ids = []
-
-        if shc:
-            model_ids.append("Custom_Model")
-            mm_models.append(mm.read_model_shc(shc))
-
         f = StringIO()
         writer = csv.writer(f)
 
+        collections = models.ProductCollection.objects.filter(identifier__in=collection_ids)
         range_type = collections[0].range_type
 
-        add_range_type = []
-        if len(model_ids)>0 and model_ids[0] != '':
-            for mid in model_ids:
-                    add_range_type.append("F_res_%s"%(mid))
-                    add_range_type.append("B_NEC_res_%s"%(mid))
+        if len(collection_ids)==2:
 
-        writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp", "qdlat", "mlt"])
-        # TODO: assert that the range_type is equal for all collections
+            writer.writerow(["id"] + [band.identifier for band in range_type])
 
-        for collection_id in collection_ids:
-            coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
-            coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
-            coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+            collections = []
+            coll_data = dict()
 
-            for coverage in coverages_qs:
-                #collection_id = models.ProductCollection.objects.filter(identifier__in=collection_id)
-                cov_begin_time, cov_end_time = coverage.time_extent
-                cov_cast = coverage.cast()
-                t_res = get_total_seconds(cov_cast.resolution_time)
+            coverages_qs1 = models.Product.objects.filter(collections__identifier=collection_ids[0])
+            coverages_qs1 = coverages_qs1.filter(begin_time__lte=end_time)
+            coverages_qs1 = coverages_qs1.filter(end_time__gte=begin_time)
+
+            coverages_qs2 = models.Product.objects.filter(collections__identifier=collection_ids[1])
+            coverages_qs2 = coverages_qs2.filter(begin_time__lte=end_time)
+            coverages_qs2 = coverages_qs2.filter(end_time__gte=begin_time)
+
+
+            for c1, c2 in izip(coverages_qs1, coverages_qs2):
+
+                cov_begin_time, cov_end_time = c1.time_extent
+
+                c1 = c1.cast()
+                c2 = c2.cast()
+
+                t_res = get_total_seconds(c1.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
-                high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox)
+                high = min(c1.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
 
 
-        outputs['output'] = f
-        
-        return outputs
+                
+
+                filename1 = connect(c1.data_items.all()[0])
+                filename2 = connect(c2.data_items.all()[0])
+
+                ds1 = pycdf.CDF(filename1)
+                ds2 = pycdf.CDF(filename2)
+
+                output_data = OrderedDict()
+                output_data1 = OrderedDict()
+                output_data2 = OrderedDict()
+
+                def distance(x1, y1, x2, y2):
+                    return math.sqrt((x2-x1)*(x2-x1) + (y2-y1) * (y2-y1))
+
+                def calc_offset(a, b, offset_range, sample_point):
+                    min_distance = float("inf")
+                    used_offset = None
+                    for offset in range(-offset_range, offset_range):
+                        v=distance(
+                            a["Latitude"][sample_point],
+                            a["Longitude"][sample_point],
+                            b["Latitude"][sample_point + offset],
+                            b["Longitude"][sample_point + offset])
+                        if v < min_distance:
+                            min_distance = v
+                            used_offset = offset
+                    return used_offset
+
+                for band in range_type:
+                    output_data1[band.identifier] = ds1[band.identifier][low:high:resolution]
+                    output_data2[band.identifier] = ds2[band.identifier][low:high:resolution]
+                    
+                    #output_data[band.identifier] = data1-data2
+
+                data_length = len(output_data1["Latitude"])
+                sample_point = int(data_length/2)
+                offset_range = 50
+
+                if offset_range > sample_point:
+                    offset_range = sample_point-1
+
+                offset = calc_offset(output_data1, output_data2, offset_range, sample_point)
+                
+                if offset < 0:
+                    min_a = offset*-1
+                    min_b = 0
+                    max_a = data_length 
+                    max_b = data_length + offset
+                else:
+                    min_a = 0
+                    min_b = offset
+                    max_a = data_length - offset
+                    max_b = data_length
+
+                output_data["Latitude"] = output_data1["Latitude"][min_a:max_a]
+                output_data["Longitude"] = output_data1["Longitude"][min_a:max_a]
+                output_data["Radius"] = output_data1["Radius"][min_a:max_a]
+                output_data["F"] = output_data1["F"][min_a:max_a] - output_data2["F"][min_b:max_b]
+                output_data["B_NEC"] = output_data1["B_NEC"][min_a:max_a] - output_data2["B_NEC"][min_b:max_b]
 
 
-    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
-        # Open file
-        filename = connect(coverage.data_items.all()[0])
+                for row in izip(*output_data.itervalues()):
+                    writer.writerow([" - ".join(collection_ids)] + map(translate, row))
 
-        ds = pycdf.CDF(filename)
-        output_data = OrderedDict()
 
-        # Read data
-        for band in range_type:
-            data = ds[band.identifier]
-            output_data[band.identifier] = data[low:high:resolution]
+            outputs['output'] = f
+            
+            return outputs
 
-        if bbox:
-            lons = output_data["Longitude"]
-            lats = output_data["Latitude"]
-            mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
+        else:
 
-            for name, data in output_data.items():
-                output_data[name] = output_data[name][mask]
 
-        rads = output_data["Radius"]*1e-3
-       
-        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
+            model_ids = model_ids.split(",")
+            mm_models = [getModel(x) for x in model_ids]
 
-        #raise Exception(mm_models)
-        if len(mm_models)>0:
+            if len(mm_models)>0 and mm_models[0] is None:
+                mm_models = []
+                model_ids = []
 
-            models_data = [x.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
-            #models_data[:][:,2] *= -1
+            if shc:
+                model_ids.append("Custom_Model")
+                mm_models.append(mm.read_model_shc(shc))
 
-            #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
-            for md, mid in zip(models_data, model_ids):
-                label_res = "F_res_%s"%(mid)
-                label_NEC_res = "B_NEC_%s"%(mid)
-                md[:,2] *= -1
-                output_data[label_res] = output_data["F"] - mm.vnorm(md)
-                output_data[label_NEC_res] = output_data["B_NEC"] - md
+            
+            add_range_type = []
+            if len(model_ids)>0 and model_ids[0] != '':
+                for mid in model_ids:
+                        add_range_type.append("F_res_%s"%(mid))
+                        add_range_type.append("B_NEC_res_%s"%(mid))
 
-            #nec_data = output_data["B_NEC"]
+            writer.writerow(["id"] + [band.identifier for band in range_type] + add_range_type + ["dst", "kp", "qdlat", "mlt"])
+            # TODO: assert that the range_type is equal for all collections
 
-            #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
+            for collection_id in collection_ids:
+                coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
+                coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+                coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
 
-        aux_data = aux.query_db(
-            output_data["Timestamp"][0], output_data["Timestamp"][-1],
-            len(output_data["Timestamp"])
-        )
-        output_data["dst"] = aux_data["dst"]
-        output_data["kp"] = aux_data["kp"]
+                for coverage in coverages_qs:
+                    #collection_id = models.ProductCollection.objects.filter(identifier__in=collection_id)
+                    cov_begin_time, cov_end_time = coverage.time_extent
+                    cov_cast = coverage.cast()
+                    t_res = get_total_seconds(cov_cast.resolution_time)
+                    low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                    high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+                    self.handle(cov_cast, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox)
 
-        times = map(toYearFraction, output_data["Timestamp"])
 
-        qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
+            outputs['output'] = f
+            
+            return outputs
 
-        output_data["qdlat"] = qdlat
-        output_data["mlt"] = mlt
 
-        for row in izip(*output_data.itervalues()):
-            writer.writerow([collection_id] + map(translate, row))
+        def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
+            # Open file
+            filename = connect(coverage.data_items.all()[0])
+
+            ds = pycdf.CDF(filename)
+            output_data = OrderedDict()
+
+            # Read data
+            for band in range_type:
+                data = ds[band.identifier]
+                output_data[band.identifier] = data[low:high:resolution]
+
+            if bbox:
+                lons = output_data["Longitude"]
+                lats = output_data["Latitude"]
+                mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
+
+                for name, data in output_data.items():
+                    output_data[name] = output_data[name][mask]
+
+            rads = output_data["Radius"]*1e-3
+           
+            coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
+
+            #raise Exception(mm_models)
+            if len(mm_models)>0:
+
+                models_data = [x.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
+                #models_data[:][:,2] *= -1
+
+                #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
+                for md, mid in zip(models_data, model_ids):
+                    label_res = "F_res_%s"%(mid)
+                    label_NEC_res = "B_NEC_%s"%(mid)
+                    md[:,2] *= -1
+                    output_data[label_res] = output_data["F"] - mm.vnorm(md)
+                    output_data[label_NEC_res] = output_data["B_NEC"] - md
+
+                #nec_data = output_data["B_NEC"]
+
+                #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
+
+            aux_data = aux.query_db(
+                output_data["Timestamp"][0], output_data["Timestamp"][-1],
+                len(output_data["Timestamp"])
+            )
+            output_data["dst"] = aux_data["dst"]
+            output_data["kp"] = aux_data["kp"]
+
+            times = map(toYearFraction, output_data["Timestamp"])
+
+            qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
+
+            output_data["qdlat"] = qdlat
+            output_data["mlt"] = mlt
+
+            for row in izip(*output_data.itervalues()):
+                writer.writerow([collection_id] + map(translate, row))
         
 def translate(arr):
 
