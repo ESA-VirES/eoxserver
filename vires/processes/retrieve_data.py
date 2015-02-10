@@ -190,7 +190,7 @@ class retrieve_data(Component):
 
         if len(collection_ids)==2:
 
-            writer.writerow(["id"] + ["Latitude", "Longitude", "Radius", "B_NEC"])
+            writer.writerow(["id"] + ["Latitude", "Longitude", "Radius", "F", "B_NEC"])
 
             collections = []
             coll_data = dict()
