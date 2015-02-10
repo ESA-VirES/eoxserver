@@ -190,7 +190,7 @@ class retrieve_data(Component):
 
         if len(collection_ids)==2:
 
-            writer.writerow(["id"] + [band.identifier for band in range_type])
+            writer.writerow(["id"] + ["Latitude", "Longitude", "Radius", "B_NEC"])
 
             collections = []
             coll_data = dict()
@@ -330,64 +330,64 @@ class retrieve_data(Component):
             return outputs
 
 
-        def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
-            # Open file
-            filename = connect(coverage.data_items.all()[0])
+    def handle(self, coverage, collection_id, range_type, writer, low, high, resolution, begin_time, end_time, mm_models, model_ids, bbox=None):
+        # Open file
+        filename = connect(coverage.data_items.all()[0])
 
-            ds = pycdf.CDF(filename)
-            output_data = OrderedDict()
+        ds = pycdf.CDF(filename)
+        output_data = OrderedDict()
 
-            # Read data
-            for band in range_type:
-                data = ds[band.identifier]
-                output_data[band.identifier] = data[low:high:resolution]
+        # Read data
+        for band in range_type:
+            data = ds[band.identifier]
+            output_data[band.identifier] = data[low:high:resolution]
 
-            if bbox:
-                lons = output_data["Longitude"]
-                lats = output_data["Latitude"]
-                mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
+        if bbox:
+            lons = output_data["Longitude"]
+            lats = output_data["Latitude"]
+            mask = (lons > bbox.lower[1]) & (lons < bbox.upper[1]) & (lats > bbox.lower[0]) & (lats < bbox.upper[0])
 
-                for name, data in output_data.items():
-                    output_data[name] = output_data[name][mask]
+            for name, data in output_data.items():
+                output_data[name] = output_data[name][mask]
 
-            rads = output_data["Radius"]*1e-3
-           
-            coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
+        rads = output_data["Radius"]*1e-3
+       
+        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
 
-            #raise Exception(mm_models)
-            if len(mm_models)>0:
+        #raise Exception(mm_models)
+        if len(mm_models)>0:
 
-                models_data = [x.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
-                #models_data[:][:,2] *= -1
+            models_data = [x.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False) for x in mm_models]
+            #models_data[:][:,2] *= -1
 
-                #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
-                for md, mid in zip(models_data, model_ids):
-                    label_res = "F_res_%s"%(mid)
-                    label_NEC_res = "B_NEC_%s"%(mid)
-                    md[:,2] *= -1
-                    output_data[label_res] = output_data["F"] - mm.vnorm(md)
-                    output_data[label_NEC_res] = output_data["B_NEC"] - md
+            #output_data["F_CHAOS5"] = eoxmagmod.vnorm(chaos5_data)
+            for md, mid in zip(models_data, model_ids):
+                label_res = "F_res_%s"%(mid)
+                label_NEC_res = "B_NEC_%s"%(mid)
+                md[:,2] *= -1
+                output_data[label_res] = output_data["F"] - mm.vnorm(md)
+                output_data[label_NEC_res] = output_data["B_NEC"] - md
 
-                #nec_data = output_data["B_NEC"]
+            #nec_data = output_data["B_NEC"]
 
-                #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
+            #output_data["B_NEC_res_chaos5"] = nec_data - chaos5_data
 
-            aux_data = aux.query_db(
-                output_data["Timestamp"][0], output_data["Timestamp"][-1],
-                len(output_data["Timestamp"])
-            )
-            output_data["dst"] = aux_data["dst"]
-            output_data["kp"] = aux_data["kp"]
+        aux_data = aux.query_db(
+            output_data["Timestamp"][0], output_data["Timestamp"][-1],
+            len(output_data["Timestamp"])
+        )
+        output_data["dst"] = aux_data["dst"]
+        output_data["kp"] = aux_data["kp"]
 
-            times = map(toYearFraction, output_data["Timestamp"])
+        times = map(toYearFraction, output_data["Timestamp"])
 
-            qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
+        qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
 
-            output_data["qdlat"] = qdlat
-            output_data["mlt"] = mlt
+        output_data["qdlat"] = qdlat
+        output_data["mlt"] = mlt
 
-            for row in izip(*output_data.itervalues()):
-                writer.writerow([collection_id] + map(translate, row))
+        for row in izip(*output_data.itervalues()):
+            writer.writerow([collection_id] + map(translate, row))
         
 def translate(arr):
 
