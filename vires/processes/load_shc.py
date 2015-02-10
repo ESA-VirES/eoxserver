@@ -127,6 +127,9 @@ class load_shc(Component):
         ("height", LiteralData('height', int, optional=True,
             default=0, abstract="Height above geoid for calculation",
         )),
+        ("coefficients_range", LiteralData('coefficients_range', str, optional=True,
+            default="-1,-1", abstract="Coefficients range to use for calculation",
+        )),
     ]
 
 
@@ -143,10 +146,11 @@ class load_shc(Component):
         ),
     ]
 
-    def execute(self, shc, begin_time, end_time, band, dim_range, style, height, output, **kwarg):
+    def execute(self, shc, begin_time, end_time, band, dim_range, style, height, coefficients_range, output, **kwarg):
         outputs = {}
 
         dim_range = [float(x) for x in dim_range.split(",")]
+        coefficients_range = [int(x) for x in coefficients_range.split(",")]
 
         cdict = {
             'red': [],
@@ -196,16 +200,39 @@ class load_shc(Component):
         coord_wgs84[:,:,2] = height
 
         # evaluate the model 
-        maxdegree = -1 
-        mindegree = -1 
+        mindegree = coefficients_range[0]
+        maxdegree = coefficients_range[1]
+        
 
         date = toYearFraction(begin_time, end_time)
 
-        m_ints3 = vnorm(model.eval(coord_wgs84, date, GEODETIC_ABOVE_WGS84, GEODETIC_ABOVE_WGS84,
-            secvar=False, maxdegree=maxdegree, mindegree=mindegree, check_validity=False))
+        values = model.eval(coord_wgs84, date, GEODETIC_ABOVE_WGS84, GEODETIC_ABOVE_WGS84,
+            secvar=False, maxdegree=maxdegree, mindegree=mindegree, check_validity=False)
 
         # calculate inclination, declination, intensity
         #m_inc, m_dec, m_ints3 = vincdecnorm(m_field)
+
+
+        #values = model.eval(arr, date, check_validity=False)
+        if band == "F":
+            plotdata = mm.vnorm(values)
+        elif band == "H":
+            plotdata = mm.vnorm(values[..., 0:2])
+        elif band == "X":
+            plotdata = values[..., 0]
+        elif band == "Y":
+            plotdata = values[..., 1]
+        elif band == "Z":
+            plotdata = values[..., 2]
+        elif band == "I":
+            plotdata = mm.vincdecnorm(values)[0]
+        elif band == "D":
+            plotdata = mm.vincdecnorm(values)[1]
+
+        # if band == "F":
+        #     plotdata = m_ints3
+        # else if band == "H":
+        #     plotdata = m_ints3
 
         # the output image
         basename = "%s_%s"%( "shc_result-",uuid4().hex )
@@ -214,7 +241,7 @@ class load_shc(Component):
         try:
             #fig = pyplot.imshow(pix_res,interpolation='nearest')
             #fig = pyplot.imshow(m_field,vmin=dim_range[0], vmax=dim_range[1], interpolation='nearest')
-            fig = pyplot.imshow(m_ints3, vmin=dim_range[0], vmax=dim_range[1], interpolation='nearest')
+            fig = pyplot.imshow(plotdata, vmin=dim_range[0], vmax=dim_range[1], interpolation='nearest')
             fig.set_cmap(style)
             fig.write_png(filename_png, True)
 
