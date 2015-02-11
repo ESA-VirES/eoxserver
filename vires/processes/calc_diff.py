@@ -57,6 +57,7 @@ from eoxserver.services.ows.wps.parameters import (
 
 
 from vires.util import get_total_seconds
+from vires.util import get_color_scale
 
 import eoxmagmod as mm
 from eoxmagmod import (
@@ -166,40 +167,9 @@ class calc_diff(Component):
         outputs = {}
 
         style_str = style
+        style = get_color_scale(style)
 
         dim_range = [float(x) for x in dim_range.split(",")]
-
-        cdict = {
-            'red': [],
-            'green': [],
-            'blue': [],
-        }
-
-        clist = [
-            (0.0,[150,0,90]),
-            (0.125,[0,0,200]),
-            (0.25,[0,25,255]),
-            (0.375,[0,152,255]),
-            (0.5,[44,255,150]),
-            (0.625,[151,255,0]),
-            (0.75,[255,234,0]),
-            (0.875,[255,111,0]),
-            (1.0,[255,0,0]),
-        ]
-
-        for x, (r, g, b) in clist:
-            r = r / 255.
-            g = g / 255.
-            b = b / 255.
-            cdict["red"].append((x, r, r))
-            cdict["green"].append((x, g, g))
-            cdict["blue"].append((x, b, b))
-
-        rainbow = LinearSegmentedColormap('rainbow', cdict)
-
-
-        if style == "rainbow":
-            style = rainbow
 
         m1 = None
         m2 = None
