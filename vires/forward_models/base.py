@@ -81,7 +81,7 @@ class BaseForwardModel(Component):
         elif field == "Y":
             return values[..., 1]
         elif field == "Z":
-            return values[..., 2]
+            return (values[..., 2]*-1)
         elif field == "I":
             return eoxmagmod.vincdecnorm(values)[0]
         elif field == "D":
