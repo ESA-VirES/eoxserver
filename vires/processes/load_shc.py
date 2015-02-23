@@ -196,7 +196,7 @@ class load_shc(Component):
         elif band == "Y":
             plotdata = values[..., 1]
         elif band == "Z":
-            plotdata = values[..., 2]
+            plotdata = (values[..., 2]*-1)
         elif band == "I":
             plotdata = mm.vincdecnorm(values)[0]
         elif band == "D":
