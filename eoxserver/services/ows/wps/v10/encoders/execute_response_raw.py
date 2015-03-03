@@ -154,4 +154,4 @@ def _encode_raw_complex(data, prm):
     """ Encode raw complex data."""
     payload, content_type = prm.encode_raw(data)
     return ResultAlt(payload, identifier=prm.identifier,
-                                                     content_type=content_type)
+            content_type=content_type, filename=getattr(data, "filename", None))
