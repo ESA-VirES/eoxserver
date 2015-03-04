@@ -278,7 +278,7 @@ class retrieve_data_filtered(Component):
                 )
                 mask = True
                 for fn in filter_names:
-                    data = aux_data[filter_name]
+                    data = aux_data[fn]
                     mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
 
                 # Only apply mask if something was added to the mask (i.e. not boolean)
