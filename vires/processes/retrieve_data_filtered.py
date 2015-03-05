@@ -116,6 +116,8 @@ def getModelResidualIdentifiers(modelid):
         return  ("B_N_res_IGRF", "B_E_res_IGRF", "B_C_res_IGRF", "F_res_IGRF")
     if modelid == "WMM":
         return  ("B_N_res_WMM", "B_E_res_WMM", "B_C_res_WMM", "F_res_WMM")
+    if modelid == "Custom_Model":
+        return  ("B_N_res_Custom_Model", "B_E_res_Custom_Model", "B_C_res_Custom_Model", "F_res_Custom_Model")
 
 
 class retrieve_data_filtered(Component):
@@ -199,7 +201,6 @@ class retrieve_data_filtered(Component):
             model_ids.append("Custom_Model")
             mm_models.append(mm.read_model_shc(shc))
 
-        
         add_range_type = []
         if len(model_ids)>0 and model_ids[0] != '':
             for mid in model_ids:
@@ -242,113 +243,118 @@ class retrieve_data_filtered(Component):
         # Open file
         filename = connect(coverage.data_items.all()[0])
 
-        ds = pycdf.CDF(filename)
-        output_data = OrderedDict()
+        with pycdf.CDF(filename) as ds:
+            #ds = pycdf.CDF(filename)
+            output_data = OrderedDict()
 
-        # Read data
-        for band in range_type:
-            data = ds[band.identifier]
-            output_data[band.identifier] = data[low:high]
+            # Read data
+            for band in range_type:
+                data = ds[band.identifier]
+                output_data[band.identifier] = data[low:high]
 
 
-        if filters:
+            if filters:
 
-            band_names = [band.identifier for band in range_type]
+                band_names = [band.identifier for band in range_type]
 
-            # First filter by all possible parameters of the data
-            mask = True
-
-            for filter_name, filter_value in filters.items():
-                if filter_name in band_names:
-                    data = output_data[filter_name]
-                    mask = mask & (data >= filter_value[0]) & (data <= filter_value[1])
-
-            # Only apply mask if something was added to the mask (i.e. not boolean)
-            if not isinstance(mask, bool):
-                for name, data in output_data.items():
-                    output_data[name] = output_data[name][mask]
-
-            
-            # Filter for possible kp and Dst indices
-            filter_names = [filter_name for filter_name in filters.keys() if filter_name in ("dst", "kp")]
-            if filter_names:
-                aux_data = aux.query_db(
-                    output_data["Timestamp"][0], output_data["Timestamp"][-1],
-                    len(output_data["Timestamp"])
-                )
+                # First filter by all possible parameters of the data
                 mask = True
-                for fn in filter_names:
-                    data = aux_data[fn]
-                    mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
+
+                for filter_name, filter_value in filters.items():
+                    if filter_name in band_names:
+                        data = output_data[filter_name]
+                        mask = mask & (data >= filter_value[0]) & (data <= filter_value[1])
+                     # Check for single parameter filter of 3D vectors
+                    if filter_name in ("B_N", "B_E", "B_C"):
+                        index = ("B_N", "B_E", "B_C").index(filter_name)
+                        data = output_data["B_NEC"][:,index]
+                        mask = mask & (data >= filter_value[0]) & (data <= filter_value[1])
+
 
                 # Only apply mask if something was added to the mask (i.e. not boolean)
                 if not isinstance(mask, bool):
                     for name, data in output_data.items():
                         output_data[name] = output_data[name][mask]
 
-
-            # Filter for possible residuals
-            for model_id, model in zip(model_ids, mm_models):
-                filter_names = [
-                    filter_name
-                    for filter_name in filters.keys()
-                    if filter_name in getModelResidualIdentifiers(model_id)
-                ]
+                
+                # Filter for possible kp and Dst indices
+                filter_names = [filter_name for filter_name in filters.keys() if filter_name in ("dst", "kp")]
                 if filter_names:
-                    # One of the filters is based on model residuals so we calculate model for values
+                    aux_data = aux.query_db(
+                        output_data["Timestamp"][0], output_data["Timestamp"][-1],
+                        len(output_data["Timestamp"])
+                    )
+                    mask = True
+                    for fn in filter_names:
+                        data = aux_data[fn]
+                        mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
+
+                    # Only apply mask if something was added to the mask (i.e. not boolean)
+                    if not isinstance(mask, bool):
+                        for name, data in output_data.items():
+                            output_data[name] = output_data[name][mask]
+
+
+                # Filter for possible residuals
+                for model_id, model in zip(model_ids, mm_models):
+                    filter_names = [
+                        filter_name
+                        for filter_name in filters.keys()
+                        if filter_name in getModelResidualIdentifiers(model_id)
+                    ]
+                    if filter_names:
+                        # One of the filters is based on model residuals so we calculate model for values
+                        rads = output_data["Radius"]*1e-3
+                        coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
+                        model_data = model.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False)
+                        model_data[:,2] *= -1
+
+                        data_res = output_data["F"] - mm.vnorm(model_data)
+                        data_res_vec = output_data["B_NEC"] - model_data
+
+                        mask = True
+
+                        for fn in filter_names:
+                            if "B_N_res_" in fn:
+                                data = data_res_vec[:,0]
+                                mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
+                            if "B_E_res_" in fn:
+                                data = data_res_vec[:,1]
+                                mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
+                            if "B_C_res_" in fn:
+                                data = data_res_vec[:,2]
+                                mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
+                            if "F_res_" in fn:
+                                mask = mask & (data_res >= filters[fn][0]) & (data_res <= filters[fn][1])
+                        
+                        if not isinstance(mask, bool):
+                            for name, data in output_data.items():
+                                output_data[name] = output_data[name][mask]
+
+
+                # Filter for possible residuals to custom model
+
+
+                #Filter for possible qdlat or mlt
+                filter_names = [filter_name for filter_name in filters.keys() if filter_name in ("qdlat", "mlt")]
+                if filter_names:
                     rads = output_data["Radius"]*1e-3
-                    coords_sph = np.vstack((output_data["Latitude"], output_data["Longitude"], rads)).T
-                    model_data = model.eval(coords_sph, toYearFractionInterval(begin_time, end_time), mm.GEOCENTRIC_SPHERICAL, check_validity=False)
-                    model_data[:,2] *= -1
-
-                    data_res = output_data["F"] - mm.vnorm(model_data)
-                    data_res_vec = output_data["B_NEC"] - model_data
-
+                    times = map(toYearFraction, output_data["Timestamp"])
+                    qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
                     mask = True
 
                     for fn in filter_names:
-                        if "B_N_res_" in fn:
-                            data = data_res_vec[:,0]
-                            mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
-                        if "B_E_res_" in fn:
-                            data = data_res_vec[:,1]
-                            mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
-                        if "B_C_res_" in fn:
-                            data = data_res_vec[:,2]
-                            mask = mask & (data >= filters[fn][0]) & (data <= filters[fn][1])
-                        if "F_res_" in fn:
-                            mask = mask & (data_res >= filters[fn][0]) & (data_res <= filters[fn][1])
+                        if fn == "qdlat":
+                            mask = mask & (qdlat >= filters[fn][0]) & (qdlat <= filters[fn][1])
+                        if fn == "mlt":
+                            mask = mask & (mlt >= filters[fn][0]) & (mlt <= filters[fn][1])
                     
                     if not isinstance(mask, bool):
                         for name, data in output_data.items():
                             output_data[name] = output_data[name][mask]
 
 
-            # Filter for possible residuals to custom model
-
-
-            #Filter for possible qdlat or mlt
-            filter_names = [filter_name for filter_name in filters.keys() if filter_name in ("qdlat", "mlt")]
-            if filter_names:
-                rads = output_data["Radius"]*1e-3
-                times = map(toYearFraction, output_data["Timestamp"])
-                qdlat, qdlon, mlt = mm.eval_apex(output_data["Latitude"], output_data["Longitude"], rads, times)
-                mask = True
-
-                for fn in filter_names:
-                    if fn == "qdlat":
-                        mask = mask & (qdlat >= filters[fn][0]) & (qdlat <= filters[fn][1])
-                    if fn == "mlt":
-                        mask = mask & (mlt >= filters[fn][0]) & (mlt <= filters[fn][1])
-                
-                if not isinstance(mask, bool):
-                    for name, data in output_data.items():
-                        output_data[name] = output_data[name][mask]
-
-
-
-
-        return output_data
+            return output_data
 
         
 def translate(arr):
