@@ -208,6 +208,7 @@ class retrieve_data_filtered(Component):
                     add_range_type.append("B_NEC_res_%s"%(mid))
 
         results = []
+        total_amount = 0
 
         for collection_id in collection_ids:
             coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
@@ -220,7 +221,11 @@ class retrieve_data_filtered(Component):
                 t_res = get_total_seconds(cov_cast.resolution_time)
                 low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
                 high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                results.append(self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters))
+                data, count = self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters)
+                results.append(data)
+                total_amount += count
+                if (total_amount) > 43e4: # equivalent to five complete days of swarm data
+                    raise Exception("Requested data too large, please refine filters")
 
         # merge results
         if len(results)>0:
@@ -353,8 +358,9 @@ class retrieve_data_filtered(Component):
                         for name, data in output_data.items():
                             output_data[name] = output_data[name][mask]
 
+            count = len(output_data["Latitude"])
 
-            return output_data
+            return output_data, count
 
         
 def translate(arr):
