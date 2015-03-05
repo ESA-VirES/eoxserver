@@ -224,7 +224,7 @@ class retrieve_data_filtered(Component):
                 data, count = self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters)
                 results.append(data)
                 total_amount += count
-                if (total_amount) > 43e4: # equivalent to five complete days of swarm data
+                if (total_amount) > (43e4 + 10): # equivalent to five complete days of swarm data
                     raise Exception("Requested data too large, please refine filters")
 
         # merge results
