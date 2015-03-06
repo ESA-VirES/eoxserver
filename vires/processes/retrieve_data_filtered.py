@@ -210,36 +210,75 @@ class retrieve_data_filtered(Component):
         results = []
         total_amount = 0
 
-        for collection_id in collection_ids:
-            coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
-            coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
-            coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
-
-            for coverage in coverages_qs:
-                cov_begin_time, cov_end_time = coverage.time_extent
-                cov_cast = coverage.cast()
-                t_res = get_total_seconds(cov_cast.resolution_time)
-                low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
-                high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
-                data, count = self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters)
-                results.append(data)
-                total_amount += count
-                if (total_amount) > (432e3): # equivalent to five complete days of swarm data
-                    raise Exception("Requested data too large: %d, please refine filters"%total_amount)
-
-        # merge results
-        if len(results)>0:
-            merged_result = OrderedDict()
-            for band in range_type:
-                data_list = [item[band.identifier] for item in results]
-                merged_result[band.identifier] = np.concatenate(data_list)
-        else:
-            raise Exception ("No data available under the specified settings")
-
-
         bt = timetools.isoformat(begin_time).translate(None, 'Z:-')
         et = timetools.isoformat(end_time).translate(None, 'Z:-')
         resultname = "%s_%s_%s_MDR_MAG_LR_Filtered"%("_".join(collection_ids),bt,et)
+
+        if output['mime_type'] == "text/csv":
+            output_filename = "/tmp/%s.csv" % uuid4().hex
+            
+            with open(output_filename, "w") as fout:
+
+                writer = csv.writer(fout)
+                first = True
+
+                for collection_id in collection_ids:
+                    coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
+                    coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+                    coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+
+                    for coverage in coverages_qs:
+                        cov_begin_time, cov_end_time = coverage.time_extent
+                        cov_cast = coverage.cast()
+                        t_res = get_total_seconds(cov_cast.resolution_time)
+                        low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                        high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+                        result, count = self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters)
+                        total_amount += count
+                        if (total_amount) > (432e3): # equivalent to five complete days of swarm data
+                            raise Exception("Requested data too large: %d, please refine filters"%total_amount)
+
+                        if first:
+                            writer.writerow(result.keys())
+                            for row in izip(*result.values()):
+                                writer.writerow(map(translate, row))
+                            first = False
+                        else:
+                            for row in izip(*result.values()):
+                                writer.writerow(map(translate, row))
+
+            return CDFile(output_filename, filename=(resultname+".csv"), **output)
+
+        elif output['mime_type'] in ("application/cdf", "application/x-cdf"):
+            #encoder = CDFEncoder(params.rangesubset)
+            output_filename = "/tmp/%s.cdf" % uuid4().hex
+
+            with pycdf.CDF(output_filename, '') as output_ds:
+                #output_ds = pycdf.CDF(output_filename, '')
+
+                for collection_id in collection_ids:
+                    coverages_qs = models.Product.objects.filter(collections__identifier=collection_id)
+                    coverages_qs = coverages_qs.filter(begin_time__lte=end_time)
+                    coverages_qs = coverages_qs.filter(end_time__gte=begin_time)
+
+                    for coverage in coverages_qs:
+                        cov_begin_time, cov_end_time = coverage.time_extent
+                        cov_cast = coverage.cast()
+                        t_res = get_total_seconds(cov_cast.resolution_time)
+                        low = max(0, int(get_total_seconds(begin_time - cov_begin_time) / t_res))
+                        high = min(cov_cast.size_x, int(math.ceil(get_total_seconds(end_time - cov_begin_time) / t_res)))
+                        result, count = self.handle(cov_cast, collection_id, range_type, low, high, begin_time, end_time, mm_models, model_ids, filters)
+                        total_amount += count
+                        if (total_amount) > (432e3): # equivalent to five complete days of swarm data
+                            raise Exception("Requested data too large: %d, please refine filters"%total_amount)
+
+                        for name, data in result.items():
+                            output_ds[name] = data
+
+            return CDFile(output_filename, filename=(resultname+".cdf"), **output)
+
+        else:
+            ExecuteError("Unexpected output format requested! %r"%output['mime_type'])
 
         return _encode_data(merged_result, output, resultname)
 
