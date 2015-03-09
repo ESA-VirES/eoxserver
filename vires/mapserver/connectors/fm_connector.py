@@ -42,7 +42,7 @@ from eoxserver.services.mapserver.interfaces import ConnectorInterface
 from vires.interfaces import ForwardModelProviderInterface
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("eoxserver")
 
 
 class ForwardModelConnector(Component):
@@ -98,9 +98,18 @@ class ForwardModelConnector(Component):
             bbox = geos.Polygon.from_bbox(bbox).transform(4326).extent
 
         with log_duration("model evaluation", logger):
+
+            coeff_min, coeff_max = (None, None)
+            coeff_range = options["dimensions"].get("coeff")
+            if coeff_range:
+                try:
+                    coeff_min, coeff_max = map(float, coeff_range[0].split(","))
+                except:
+                    raise Exception("Invalid coefficient range provided.")
+
             array = model_provider.evaluate(
                 data_item, band.identifier, bbox, size_x, size_y, elevation,
-                time
+                time, coeff_min, coeff_max
             )
 
             range_min, range_max = band.allowed_values
@@ -112,6 +121,8 @@ class ForwardModelConnector(Component):
                     raise Exception("Invalid data range provided.")
 
             array = (array - range_min) / (range_max - range_min) * 255
+
+
 
         path = join("/vsimem", uuid4().hex)
         #path = "/tmp/fm_output.tif"
@@ -133,8 +144,12 @@ class ForwardModelConnector(Component):
         band.WriteArray(array)
         layer.data = path
 
+        logger.info("Created tempfile %s" % layer.data)
+
     def disconnect(self, coverage, data_items, layer, options):
         """
         """
+
+        logger.info("Removing tempfile %s" % layer.data)
 
         vsi.remove(layer.data)

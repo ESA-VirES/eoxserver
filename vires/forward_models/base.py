@@ -58,7 +58,7 @@ class BaseForwardModel(Component):
 
     abstract = True
 
-    def evaluate(self, data_item, field, bbox, size_x, size_y, elevation, date):
+    def evaluate(self, data_item, field, bbox, size_x, size_y, elevation, date, coeff_min=None, coeff_max=None):
         model = self.get_model(data_item)
         lons = numpy.linspace(bbox[0], bbox[2], size_x, endpoint=True)
         lats = numpy.linspace(bbox[3], bbox[1], size_y, endpoint=True)
@@ -70,7 +70,10 @@ class BaseForwardModel(Component):
         arr[:, :, 1] = lons
         arr[:, :, 2] = elevation
 
-        values = model.eval(arr, date, check_validity=False)
+        coeff_min = coeff_min if coeff_min is not None else -1
+        coeff_max = coeff_max if coeff_max is not None else -1
+
+        values = model.eval(arr, date, maxdegree=coeff_max, mindegree=coeff_min, check_validity=False)
         if field == "F":
             return eoxmagmod.vnorm(values)
         elif field == "H":
