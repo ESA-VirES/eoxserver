@@ -280,13 +280,12 @@ class retrieve_swarm_features(Component):
 
 
             identifier = coverage.identifier
-            bnecs[:,2] = 0*bnecs[:,2]
+            bnecs[:,2] = 0
             tmp1 = scale*1.0/vnorm(bnecs)
             bnecs[:,0] = bnecs[:,0]*tmp1
             bnecs[:,1] = bnecs[:,1]*tmp1
-            bcarts = vrot_sph2cart(bnecs, lats.reshape((lats.size,1)), lons.reshape((lons.size,1)))
-            
-            
+
+            bcarts = vrot_sph2cart(bnecs, lats, lons)
 
             for i, (p, bcart, f) in enumerate(izip(cart_p, bcarts, fs)):
                 clr = cs.to_rgba(f)
