@@ -193,6 +193,23 @@ def get_color_scale(name):
 
 	    return LinearSegmentedColormap('custom2', cdict)
 
+	elif name == "blackwhite":
+		
+	    clist = [
+	        (0.0,[0,0,0]),
+	        (1.0,[255,255,255]),
+	    ]
+
+	    for x, (r, g, b) in clist:
+	        r = r / 255.
+	        g = g / 255.
+	        b = b / 255.
+	        cdict["red"].append((x, r, r))
+	        cdict["green"].append((x, g, g))
+	        cdict["blue"].append((x, b, b))
+
+	    return LinearSegmentedColormap('blackwhite', cdict)
+
 
 	else:
 		return name

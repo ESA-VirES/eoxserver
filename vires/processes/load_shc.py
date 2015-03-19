@@ -73,6 +73,9 @@ import matplotlib as mpl
 mpl.use('Agg')
 from matplotlib import pyplot
 
+import math
+DG2RAD = math.pi / 180.0
+
 
 
 def toYearFraction(dt_start, dt_end):
@@ -91,6 +94,16 @@ def toYearFraction(dt_start, dt_end):
     fraction = yearElapsed/yearDuration
 
     return date.year + fraction
+
+def diff_row(arr, step=1.0):
+        """ Diferentiate 2D array along the row."""
+        rstep = 1.0/step
+        diff = np.empty(arr.shape)
+        diff[:,1:-1,...] = 0.5*rstep*(arr[:,2:,...] - arr[:,:-2,...])
+        diff[:,0,...] = rstep*(arr[:,1,...] - arr[:,0,...])
+        diff[:,-1,...] = rstep*(arr[:,-1,...] - arr[:,-2,...])
+        return diff
+
 
 
 class load_shc(Component):
@@ -166,6 +179,7 @@ class load_shc(Component):
         lat = np.linspace(90.0,-90.0,int(1+180/dlat))
         lon = np.linspace(-180.0,180.0,int(1+360/dlon))
 
+
         print lat.size, lon.size 
 
         coord_wgs84 = np.empty((lat.size, lon.size, 3))
@@ -201,11 +215,20 @@ class load_shc(Component):
             plotdata = mm.vincdecnorm(values)[0]
         elif band == "D":
             plotdata = mm.vincdecnorm(values)[1]
+        elif band == "X_EW":
+            coord_sph = mm.convert(coord_wgs84, mm.GEODETIC_ABOVE_WGS84, mm.GEOCENTRIC_SPHERICAL)
+            # derivative along the easting coordinate
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*np.cos(coord_sph[:,:,0]*DG2RAD))
+            plotdata =  diff_row(values[...,0], 1.0)*rdist
+        elif band == "Y_EW":
+            coord_sph = mm.convert(coord_wgs84, mm.GEODETIC_ABOVE_WGS84, mm.GEOCENTRIC_SPHERICAL)
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*np.cos(coord_sph[:,:,0]*DG2RAD))
+            plotdata =  diff_row(values[...,1], 1.0)*rdist
+        elif band == "Z_EW":
+            coord_sph = mm.convert(coord_wgs84, mm.GEODETIC_ABOVE_WGS84, mm.GEOCENTRIC_SPHERICAL)
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*np.cos(coord_sph[:,:,0]*DG2RAD))
+            plotdata =  diff_row(values[...,2], 1.0)*rdist
 
-        # if band == "F":
-        #     plotdata = m_ints3
-        # else if band == "H":
-        #     plotdata = m_ints3
 
         # the output image
         basename = "%s_%s"%( "shc_result-",uuid4().hex )

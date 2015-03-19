@@ -211,3 +211,9 @@ class ForwardModelLayerFactory(BaseCoverageLayerFactory):
             (ms.colorObj(255,8,61),0.999999999999),
             (ms.colorObj(255,0,255),1.0),
         ), minvalue, maxvalue)
+
+
+        create_linear_style("blackwhite", layer, (
+            ms.colorObj(0, 0, 0),
+            ms.colorObj(255, 255, 255),
+        ), minvalue, maxvalue)

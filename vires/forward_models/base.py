@@ -32,10 +32,12 @@ from django.utils.timezone import make_aware, utc
 from eoxserver.core import Component, implements
 import eoxmagmod
 import numpy
+import math
 
 from vires.interfaces import ForwardModelProviderInterface
 from vires.util import get_total_seconds
 
+DG2RAD = math.pi / 180.0
 
 def decimal_to_datetime(raw_value):
     """ Converts a decimal year representation to a Python datetime.
@@ -48,6 +50,15 @@ def decimal_to_datetime(raw_value):
         seconds=get_total_seconds(base.replace(year=base.year + 1) - base) * rem
     )
 
+def diff_row(arr, step=1.0):
+        """ Diferentiate 2D array along the row."""
+        rstep = 1.0/step
+        diff = numpy.empty(arr.shape)
+        diff[:,1:-1,...] = 0.5*rstep*(arr[:,2:,...] - arr[:,:-2,...])
+        diff[:,0,...] = rstep*(arr[:,1,...] - arr[:,0,...])
+        diff[:,-1,...] = rstep*(arr[:,-1,...] - arr[:,-2,...])
+        return diff
+
 
 class BaseForwardModel(Component):
     """ Abstract base class for forward model providers using the eoxmagmod
@@ -57,6 +68,7 @@ class BaseForwardModel(Component):
     implements(ForwardModelProviderInterface)
 
     abstract = True
+
 
     def evaluate(self, data_item, field, bbox, size_x, size_y, elevation, date, coeff_min=None, coeff_max=None):
         model = self.get_model(data_item)
@@ -69,6 +81,7 @@ class BaseForwardModel(Component):
         arr[:, :, 0] = lats
         arr[:, :, 1] = lons
         arr[:, :, 2] = elevation
+        dlon = (bbox[2] - bbox[0])/size_x
 
         coeff_min = coeff_min if coeff_min is not None else -1
         coeff_max = coeff_max if coeff_max is not None else -1
@@ -89,6 +102,19 @@ class BaseForwardModel(Component):
             return eoxmagmod.vincdecnorm(values)[0]
         elif field == "D":
             return eoxmagmod.vincdecnorm(values)[1]
+        elif field == "X_EW":
+            coord_sph = eoxmagmod.convert(arr, eoxmagmod.GEODETIC_ABOVE_WGS84, eoxmagmod.GEOCENTRIC_SPHERICAL)
+            # derivative along the easting coordinate
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*numpy.cos(coord_sph[:,:,0]*DG2RAD))
+            return diff_row(values[...,0], 1.0)*rdist
+        elif field == "Y_EW":
+            coord_sph = eoxmagmod.convert(arr, eoxmagmod.GEODETIC_ABOVE_WGS84, eoxmagmod.GEOCENTRIC_SPHERICAL)
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*numpy.cos(coord_sph[:,:,0]*DG2RAD))
+            return diff_row(values[...,1], 1.0)*rdist
+        elif field == "Z_EW":
+            coord_sph = eoxmagmod.convert(arr, eoxmagmod.GEODETIC_ABOVE_WGS84, eoxmagmod.GEOCENTRIC_SPHERICAL)
+            rdist = 1.0/((dlon*DG2RAD)*coord_sph[:,:,2]*numpy.cos(coord_sph[:,:,0]*DG2RAD))
+            return diff_row(values[...,2], 1.0)*rdist
 
         else:
             raise Exception("Invalid field '%s'." % field)
