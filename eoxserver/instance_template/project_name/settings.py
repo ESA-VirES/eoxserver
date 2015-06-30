@@ -221,11 +221,18 @@ COMPONENTS = (
     # renderer components etc.
     'eoxserver.services.native.**',
     'eoxserver.services.gdal.**',
-    'eoxserver.services.mapserver.**',
+    #'eoxserver.services.mapserver.**',
+    'eoxserver.services.mapserver.wms.map_renderer',
+    'eoxserver.services.mapserver.wms.capabilities_renderer',
+    'eoxserver.services.mapserver.wms.feature_info_renderer',
+    'eoxserver.services.mapserver.wms.legendgraphic_renderer',
+
 
     # VirES Processes
-    'eoxserver.vires.*',
-    'vires.ows.**'
+    #'eoxserver.vires.*',
+    'vires.ows.**',
+    'vires.forward_models.*'
+    'vires.mapserver.**'
 )
 
 
@@ -282,6 +289,12 @@ LOGGING = {
 FIXTURE_DIRS = (
     join(PROJECT_DIR, 'data/fixtures'),
 )
+
+
+VIRES_AUX_DB_DST = join(PROJECT_DIR, "aux_dst.cdf")
+VIRES_AUX_DB_KP = join(PROJECT_DIR, "aux_kp.cdf")
+VIRES_AUX_DB_IBIA = join(PROJECT_DIR, "aux_ibia.cdf")
+
 
 # Set this variable if the path to the instance cannot be resolved 
 # automatically, e.g. in case of redirects
