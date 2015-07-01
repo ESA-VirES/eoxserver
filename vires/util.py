@@ -51,7 +51,7 @@ def get_model(modelid):
     if modelid == "IGRF12":
         return mm.shc.read_model_shc(DATA_IGRF12)
     if modelid == "SIFM":
-        return mm.shc.read_model_shc(SIFM)
+        return mm.shc.read_model_shc(DATA_SIFM)
     if modelid == "WMM":
         return mm.read_model_wmm2010()
 
