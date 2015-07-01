@@ -58,6 +58,7 @@ from eoxserver.services.ows.wps.parameters import (
 
 from vires.util import get_total_seconds
 from vires.util import get_color_scale
+from vires.util import get_model
 
 import eoxmagmod as mm
 from eoxmagmod import (
@@ -91,17 +92,6 @@ def toYearFraction(dt_start, dt_end):
     fraction = yearElapsed/yearDuration
 
     return date.year + fraction
-
-def getModel(modelid):
-    if modelid == "CHAOS-5-Combined":
-        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
-    if modelid == "EMM":
-        return mm.emm.read_model_emm2010()
-    if modelid == "IGRF":
-        return mm.igrf.read_model_igrf11()
-    if modelid == "WMM":
-        return mm.read_model_wmm2010()
-
 
 
 
@@ -178,12 +168,12 @@ class calc_diff(Component):
 
         # Two model ids are passed
         if len(model_ids) == 2:
-            m1 = getModel(model_ids[0])
-            m2 = getModel(model_ids[1])
+            m1 = get_model(model_ids[0])
+            m2 = get_model(model_ids[1])
 
         # One model id passed to compare to shc file
         elif len(model_ids) == 1:
-            m1 = getModel(model_ids[0])
+            m1 = get_model(model_ids[0])
             m2 = mm.read_model_shc(shc)
 
         else:

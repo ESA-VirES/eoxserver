@@ -27,12 +27,7 @@
 #-------------------------------------------------------------------------------
 
 import eoxmagmod.shc
-import os.path
-
-# location of the data files
-dirname = os.path.dirname(__file__)
-dirname = os.path.join(dirname, 'data')
-DATA_IGRF12 = os.path.join(dirname, 'IGRF12.shc')
+import vires.util as ut
 
 
 from vires.forward_models.base import BaseForwardModel
@@ -45,4 +40,4 @@ class IGRF12Model(BaseForwardModel):
     identifier = "IGRF12"
 
     def get_model(self, data_item):
-		return eoxmagmod.shc.read_model_shc(DATA_IGRF12)
+		return eoxmagmod.shc.read_model_shc(ut.DATA_IGRF12)

@@ -58,6 +58,7 @@ from spacepy import pycdf
 from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
+from vires.util import get_model
 from vires import aux
 
 import eoxmagmod as mm
@@ -97,15 +98,6 @@ def toYearFraction(date):
     return date.year + fraction
 
 
-def getModel(modelid):
-    if modelid == "CHAOS-5-Combined":
-        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
-    if modelid == "EMM":
-        return mm.emm.read_model_emm2010()
-    if modelid == "IGRF":
-        return mm.igrf.read_model_igrf11()
-    if modelid == "WMM":
-        return mm.read_model_wmm2010()
 
 def getModelResidualIdentifiers(modelid):
     if modelid == "CHAOS-5-Combined":
@@ -114,6 +106,10 @@ def getModelResidualIdentifiers(modelid):
         return  ("B_N_res_EMM", "B_E_res_EMM", "B_C_res_EMM", "F_res_EMM")
     if modelid == "IGRF":
         return  ("B_N_res_IGRF", "B_E_res_IGRF", "B_C_res_IGRF", "F_res_IGRF")
+    if modelid == "IGRF12":
+        return  ("B_N_res_IGRF12", "B_E_res_IGRF12", "B_C_res_IGRF12", "F_res_IGRF12")
+    if modelid == "SIFM":
+        return  ("B_N_res_SIFM", "B_E_res_SIFM", "B_C_res_SIFM", "F_res_SIFM")
     if modelid == "WMM":
         return  ("B_N_res_WMM", "B_E_res_WMM", "B_C_res_WMM", "F_res_WMM")
     if modelid == "Custom_Model":
@@ -191,7 +187,7 @@ class retrieve_data_filtered(Component):
 
 
         model_ids = model_ids.split(",")
-        mm_models = [getModel(x) for x in model_ids]
+        mm_models = [get_model(x) for x in model_ids]
 
         if len(mm_models)>0 and mm_models[0] is None:
             mm_models = []

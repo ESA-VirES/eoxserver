@@ -59,6 +59,7 @@ from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
 from vires.util import get_color_scale
+from vires.util import get_model
 
 import eoxmagmod as mm
 import matplotlib.cm
@@ -196,12 +197,7 @@ class retrieve_fl_czml(Component):
 
             color = struct.unpack('BBB', color.decode('hex'))
 
-            if model_id == "WMM":
-                model = read_model_wmm2010()
-            elif model_id == "CHAOS 5":
-                model = read_model_shc(DATA_CHAOS5_CORE) + read_model_shc(DATA_CHAOS5_STATIC)
-            elif model_id == "IGRF":
-                model = read_model_igrf11(DATA_IGRF11)
+            model = get_model(model_id)
 
             cnt = 0
 

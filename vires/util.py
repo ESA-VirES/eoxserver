@@ -27,7 +27,33 @@
 #-------------------------------------------------------------------------------
 
 import matplotlib.cm
+import os.path
 from matplotlib.colors import LinearSegmentedColormap
+
+import eoxmagmod as mm
+
+
+# Definition of additional models
+# location of the data files
+dirname = os.path.dirname(__file__)
+dirname = os.path.join(dirname, 'model_data')
+DATA_IGRF12 = os.path.join(dirname, 'IGRF12.shc')
+DATA_SIFM = os.path.join(dirname, 'SIFM.shc')
+
+
+def get_model(modelid):
+    if modelid == "CHAOS-5-Combined":
+        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
+    if modelid == "EMM":
+        return mm.emm.read_model_emm2010()
+    if modelid == "IGRF":
+        return mm.igrf.read_model_igrf11()
+    if modelid == "IGRF12":
+        return mm.shc.read_model_shc(DATA_IGRF12)
+    if modelid == "SIFM":
+        return mm.shc.read_model_shc(SIFM)
+    if modelid == "WMM":
+        return mm.read_model_wmm2010()
 
 
 def get_total_seconds(d):

@@ -112,6 +112,11 @@ class get_indices(Component):
             aux_data = aux.query_kp_ni(
                 begin_time, end_time
             )
+        elif index_id == "ibia":
+            aux_data = aux.query_ibi_ni(
+                "A", begin_time, end_time
+            )
+            index_id = "bubble_index"
 
         t_arr = np.array(aux_data["time"]) 
         v_arr = np.array(aux_data[index_id])
