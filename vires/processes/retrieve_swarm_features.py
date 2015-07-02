@@ -60,6 +60,7 @@ from eoxserver.backends.access import connect
 from vires import models
 from vires.util import get_total_seconds
 from vires.util import get_color_scale
+from vires.util import get_model
 
 import eoxmagmod as mm
 import matplotlib.cm
@@ -85,15 +86,6 @@ def toYearFraction(dt_start, dt_end):
 
     return date.year + fraction
 
-def getModel(modelid):
-    if modelid == "CHAOS-5":
-        return  (mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_CORE) + mm.shc.read_model_shc(mm.shc.DATA_CHAOS5_STATIC))
-    if modelid == "EMM":
-        return mm.emm.read_model_emm2010()
-    if modelid == "IGRF":
-        return mm.igrf.read_model_igrf11()
-    if modelid == "WMM":
-        return mm.read_model_wmm2010()
 
 
 CRSS = (
@@ -178,7 +170,7 @@ class retrieve_swarm_features(Component):
         dim_range = [float(x) for x in dim_range.split(",")]
 
         model_ids = model_ids.split(",")
-        mm_models = [getModel(x) for x in model_ids]
+        mm_models = [get_model(x) for x in model_ids]
 
         if len(mm_models)>0 and mm_models[0] is None:
             mm_models = []
