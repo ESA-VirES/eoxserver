@@ -237,20 +237,7 @@ class retrieve_swarm_features(Component):
         lats = output_data["Latitude"]
         rads = output_data["Radius"]
 
-        if req_band == "F":
-
-            cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
-
-            fs = output_data["F"]
-            identifier = coverage.identifier
-            
-            for i, (p, f) in enumerate(izip(cart_p, fs)):
-                clr = cs.to_rgba(f)
-                tmp.write('\n%s-%d,%f,%f,%d,%d,%d,%d'
-                        %(identifier, i, p[0], p[1], p[2], int(clr[0]*255),int(clr[1]*255),int(clr[2]*255)))
-
-
-        elif req_band == "B_NEC":
+        if req_band == "B_NEC":
 
             cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
 
@@ -283,6 +270,20 @@ class retrieve_swarm_features(Component):
                 clr = cs.to_rgba(f)
                 tmp.write('\n%s-%d,%f,%f,%d,%f,%f,%d,%d,%d,%d'
                         %(identifier, i, p[0], p[1], p[2], p[0]+bcart[0], p[1]+bcart[1], p[2]+bcart[2],int(clr[0]*255),int(clr[1]*255),int(clr[2]*255) ))
+
+        #if req_band == "F" or req_band == "Diff_Cross" or req_band == "Diff_Along" or req_band == "Diff_Radial":
+        # TODO: Introduce check to make sure requested parameter is in range type
+        else:
+            cart_p = convert(zip(lats, lons, rads), GEOCENTRIC_SPHERICAL, GEOCENTRIC_CARTESIAN)
+
+            fs = output_data[req_band]
+            identifier = coverage.identifier
+            
+            for i, (p, f) in enumerate(izip(cart_p, fs)):
+                clr = cs.to_rgba(f)
+                tmp.write('\n%s-%d,%f,%f,%d,%d,%d,%d'
+                        %(identifier, i, p[0], p[1], p[2], int(clr[0]*255),int(clr[1]*255),int(clr[2]*255)))
+
 
         
 def translate(arr):
